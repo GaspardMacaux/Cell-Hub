@@ -1,0 +1,2703 @@
+/* ============================================
+   CELL-HUB CUSTOM STYLES
+   Centralized styling for consistent design
+   ============================================ */
+
+/* ===========================================
+   GRADIENT HEADERS
+   =========================================== */
+
+/* Header principal de l'app avec gradient vert */
+.skin-blue .main-header .navbar {
+  background-color: #2c3e50 !important;
+}
+
+/* Garde la marge si tu veux */
+.content-wrapper, .right-side {
+  margin-top: 0px !important;
+}
+
+.header-violet{
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 30px;
+  margin: -15px -15px 30px -15px;
+  border-radius: 0;
+  color: white;
+  text-align: center;
+}
+
+.header-green {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  padding: 30px;
+  margin: -15px -15px 30px -15px;
+  border-radius: 0;
+  color: white;
+  text-align: center;
+}
+
+.header-blue {
+  background: linear-gradient(135deg, #1e88e5 0%, #1565c0 100%);
+  padding: 30px;
+  margin: -15px -15px 30px -15px;
+  border-radius: 0;
+  color: white;
+  text-align: center;
+}
+
+.header-bordeaux {
+  background: linear-gradient(135deg, #8B1538 0%, #C42E5C 100%);
+  padding: 30px;
+  margin: -15px -15px 30px -15px;
+  border-radius: 0;
+  color: white;
+  text-align: center;
+}
+
+.header-pink {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  padding: 30px;
+  margin: -15px -15px 30px -15px;
+  border-radius: 0;
+  color: white;
+  text-align: center;
+}
+
+.header-violet-green {
+  background: linear-gradient(135deg, #667eea 0%, #11998e 100%);
+  padding: 30px;
+  margin: -15px -15px 30px -15px;
+  border-radius: 0;
+  color: white;
+  text-align: center;
+}
+
+.header-title {
+  margin: 0 0 10px 0;
+  font-weight: bold;
+  font-size: 32px;
+}
+
+.header-subtitle {
+  margin: 0;
+  font-size: 18px;
+  opacity: 0.9;
+}
+
+/* ===========================================
+   GRADIENT BUTTONS
+   =========================================== */
+
+.btn-gradient-violet {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  color: white !important;
+  border: none !important;
+  font-weight: bold !important;
+  padding: 12px 20px !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  transition: all 0.3s ease !important;
+}
+
+.btn-gradient-violet:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+}
+
+.btn-gradient-green {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%) !important;
+  color: white !important;
+  border: none !important;
+  font-weight: bold !important;
+  padding: 12px 20px !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  transition: all 0.3s ease !important;
+}
+
+.btn-gradient-green:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+}
+
+.btn-gradient-blue {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%) !important;
+  color: white !important;
+  border: none !important;
+  font-weight: bold !important;
+  padding: 12px 20px !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  transition: all 0.3s ease !important;
+}
+
+.btn-gradient-blue:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+}
+
+.btn-gradient-pink {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%) !important;
+  color: white !important;
+  border: none !important;
+  font-weight: bold !important;
+  padding: 12px 20px !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  transition: all 0.3s ease !important;
+}
+
+.btn-gradient-pink:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+}
+
+.btn-gradient-bordeaux {
+  background: linear-gradient(135deg, #8B1538 0%, #C42E5C 100%) !important;
+  color: white !important;
+  border: none !important;
+  font-weight: bold !important;
+  padding: 12px 20px !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  transition: all 0.3s ease !important;
+}
+
+.btn-gradient-bordeaux:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+}
+
+/* ===========================================
+   WHITE BUTTONS WITH COLORED TEXT
+   =========================================== */
+
+.btn-white-violet {
+  background-color: white !important;
+  color: #667eea !important;
+  border: none !important;
+  font-weight: bold !important;
+  padding: 12px 20px !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  transition: all 0.3s ease !important;
+}
+
+.btn-white-violet:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+  color: #667eea !important;
+}
+
+.btn-white-green {
+  background-color: white !important;
+  color: #11998e !important;
+  border: none !important;
+  font-weight: bold !important;
+  padding: 12px 20px !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  transition: all 0.3s ease !important;
+}
+
+.btn-white-green:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+  color: #11998e !important;
+}
+
+.btn-white-blue {
+  background-color: white !important;
+  color: #0277bd !important;
+  border: none !important;
+  font-weight: bold !important;
+  padding: 12px 20px !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  transition: all 0.3s ease !important;
+}
+
+.btn-white-blue:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+  color: #0277bd !important;
+}
+
+.btn-white-bordeaux {
+  background-color: white !important;
+  color: #8B1538 !important;
+  border: none !important;
+  font-weight: bold !important;
+  padding: 12px 20px !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  transition: all 0.3s ease !important;
+}
+
+.btn-white-bordeaux:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+  color: #8B1538 !important;
+}
+
+.btn-white-pink {
+  background-color: white !important;
+  color: #C42E5C !important;
+  border: none !important;
+  font-weight: bold !important;
+  padding: 12px 20px !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  transition: all 0.3s ease !important;
+}
+
+.btn-white-pink:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+  color: #C42E5C !important;
+}
+
+/* ===========================================
+   FULL WIDTH BUTTON HELPER
+   =========================================== */
+
+.btn-full-width {
+  width: 100% !important;
+  margin-bottom: 10px !important;
+}
+
+/* ===========================================
+   GRADIENT CARDS
+   =========================================== */
+
+.card-violet {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 25px;
+  border-radius: 10px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  color: white;
+}
+
+.card-green {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  padding: 25px;
+  border-radius: 10px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  color: white;
+}
+
+.card-blue {
+  background: linear-gradient(135deg, #1e88e5 0%, #1565c0 100%);
+  padding: 25px;
+  border-radius: 10px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  color: white;
+}
+
+
+/* Card rose classique (rose clair → rose foncé) */
+.card-pink-pure {
+  background: linear-gradient(135deg, #f48fb1 0%, #ec407a 100%) !important;
+  padding: 25px;
+  border-radius: 10px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  color: white;
+}
+
+/* Card rose magenta (rose vif → magenta) */
+.card-pink-magenta {
+  background: linear-gradient(135deg, #f093fb 0%, #e91e63 100%) !important;
+  padding: 25px;
+  border-radius: 10px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  color: white;
+}
+
+/* Card rose fuchsia (fuchsia → rose foncé) */
+.card-pink-fuchsia {
+  background: linear-gradient(135deg, #ff69b4 0%, #c71585 100%) !important;
+  padding: 25px;
+  border-radius: 10px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  color: white;
+}
+
+/* Card rose barbe à papa (rose très doux) */
+.card-pink-candy {
+  background: linear-gradient(135deg, #ffc3d5 0%, #ff9cbd 100%) !important;
+  padding: 25px;
+  border-radius: 10px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  color: white;
+}
+
+
+/* ===========================================
+   STEP BADGES (for workflow)
+   =========================================== */
+
+.step-badge {
+  position: absolute;
+  top: -15px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  color: white;
+}
+
+.step-badge-violet {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.step-badge-green {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+}
+
+.step-badge-blue {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+
+.step-badge-pink {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+/* ===========================================
+   FILE INPUT STYLING
+   =========================================== */
+
+/* Hide progress bars and text inputs for styled file inputs */
+[id$="_progress"] {
+  display: none !important;
+}
+
+.styled-file-input .form-control {
+  display: none !important;
+}
+
+.styled-file-input label {
+  display: none !important;
+}
+
+
+
+/* ===========================================
+   CUSTOM GRADIENT BOXES FOR PLOTS
+   =========================================== */
+
+/* Box violette - FORCE l'adaptation verticale */
+.box-gradient-violet {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid rgba(102, 126, 234, 0.3);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  margin-bottom: 20px;
+  height: auto !important;
+  min-height: fit-content !important; /* ✅ S'adapte au contenu */
+  display: flex;
+  flex-direction: column;
+}
+
+/* Le plot container prend tout l'espace nécessaire */
+.box-gradient-violet .plot-output-container {
+  width: 100%;
+  height: auto !important;
+  min-height: fit-content !important; /* ✅ S'adapte */
+  flex: 1;
+  overflow: visible;
+  border-radius: 8px;
+  background: white;
+  padding: 15px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Le shiny-plot-output prend toute la hauteur calculée */
+.box-gradient-violet .plot-output-container .shiny-plot-output {
+  height: 100% !important;
+  width: 100% !important;
+  min-height: fit-content !important;
+  overflow: visible !important;
+}
+
+/* Les images s'adaptent */
+.box-gradient-violet .plot-output-container img {
+  width: 100% !important;
+  height: auto !important;
+  display: block;
+}
+
+.box-gradient-green {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid rgba(17, 153, 142, 0.3);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  margin-bottom: 20px;
+}
+
+.box-gradient-blue {
+  background: linear-gradient(135deg, #1e88e5 0%, #1565c0 100%);
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid rgba(30, 136, 229, 0.3);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  margin-bottom: 20px;
+}
+
+.box-gradient-pink {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid rgba(240, 147, 251, 0.3);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  margin-bottom: 20px;
+}
+
+
+/* Box title styling */
+.box-title {
+  color: white;
+  margin-top: 0;
+  margin-bottom: 15px;
+  font-weight: bold;
+  font-size: 18px;
+}
+
+/* White container for plots inside colored boxes */
+.plot-container {
+  background-color: white;
+  padding: 15px;
+  border-radius: 6px;
+  border: 1px solid #dee2e6;
+}
+
+/* Thin padding variant (10px instead of 15px) */
+.box-thin {
+  padding: 10px !important;
+}
+
+.plot-container-thin {
+  background-color: white !important;
+  padding: 10px !important;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+}
+
+
+
+/* Info Box VIOLETTE */
+.info-box-violet {
+  background-color: #e8eaf6;
+  padding: 20px;
+  border-radius: 8px;
+  border-left: 4px solid #667eea;
+  margin-bottom: 25px;
+}
+
+.info-box-violet h4 {
+  color: #495057;
+  margin: 0;
+}
+
+.info-box-violet h5 {
+  color: #667eea;
+  margin-top: 15px;
+}
+
+
+/* Tip box (jaune) - utilisé dans les deux */
+.tip-box {
+  background-color: #fff9c4;
+  padding: 12px;
+  border-radius: 6px;
+  border-left: 3px solid #fbc02d;
+  margin-top: 15px;
+}
+
+.tip-box p {
+  margin: 0;
+}
+
+/* Info Box BLEU TURQUOISE */
+.info-box-turquoise {
+  background-color: #e0f7fa;
+  padding: 20px;
+  border-radius: 8px;
+  border-left: 4px solid #00acc1;
+  margin-bottom: 25px;
+}
+
+.info-box-turquoise h4 {
+  color: #495057;
+  margin: 0;
+}
+
+.info-box-turquoise h5 {
+  color: #00acc1;
+  margin-top: 15px;
+}
+
+/* Info Box ROSE MAGENTA */
+.info-box-magenta {
+  background-color: #fce4ec;
+  padding: 20px;
+  border-radius: 8px;
+  border-left: 4px solid #e91e63;
+  margin-bottom: 25px;
+}
+
+.info-box-magenta h4 {
+  color: #495057;
+  margin: 0;
+}
+
+.info-box-magenta h5 {
+  color: #e91e63;
+  margin-top: 15px;
+}
+
+/* Tip box (utilisé dans toutes) */
+.tip-box {
+  background-color: #fff9c4;
+  padding: 12px;
+  border-radius: 6px;
+  border-left: 3px solid #fbc02d;
+  margin-top: 15px;
+}
+
+.tip-box p {
+  margin: 0;
+}
+
+
+/* ===========================================
+   COLORED CARDS (RÉUTILISABLES)
+   =========================================== */
+
+/* Card rose clair/pastel */
+.card-pink-light {
+  background: linear-gradient(135deg, #f8bbd0 0%, #f48fb1 100%);
+  padding: 25px;
+  border-radius: 10px;
+  height: 100%;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  color: white;
+}
+
+/* Card rose moyen */
+.card-pink-dark {
+  background: linear-gradient(135deg, #f06292 0%, #ec407a 100%);
+  padding: 25px;
+  border-radius: 10px;
+  height: 100%;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  color: white;
+}
+
+/* Icône circulaire dans les cards */
+.card-icon-circle {
+  background-color: rgba(255,255,255,0.2);
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 15px;
+}
+
+.card-icon-circle i {
+  font-size: 36px;
+}
+
+/* Titre de la card centré */
+.card-header-center {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.card-header-center h4 {
+  margin: 0;
+  font-weight: bold;
+}
+
+/* Section d'info dans la card (semi-transparente) */
+.card-info-section {
+  background-color: rgba(255,255,255,0.1);
+  padding: 15px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+}
+
+.card-info-section p {
+  margin-bottom: 8px;
+}
+
+.card-info-section ul {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 14px;
+}
+
+/* Highlight dans la section d'info */
+.card-info-highlight {
+  background-color: rgba(255,255,255,0.15);
+  padding: 10px;
+  border-radius: 4px;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+/* Zone blanche pour les inputs dans la card */
+.card-input-zone {
+  background-color: white;
+  padding: 15px;
+  border-radius: 6px;
+}
+
+.card-input-zone label {
+  font-weight: bold;
+  color: #495057;
+  margin-bottom: 10px;
+  display: block;
+}
+
+/* Status indicator */
+.card-status {
+  text-align: center;
+  margin-top: 15px;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+/* ===========================================
+   LOGS & PROCESSING
+   =========================================== */
+
+/* Processing logs container */
+.logs-container {
+  margin-top: 25px;
+  background-color: #f8f9fa;
+  padding: 20px;
+  border-radius: 8px;
+  border: 2px solid #dee2e6;
+}
+
+.logs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.logs-header h4 {
+  margin: 0;
+  color: #495057;
+  font-weight: bold;
+}
+
+.logs-content {
+  background-color: #ffffff;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  padding: 15px;
+  max-height: 300px;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 13px;
+}
+
+/* ===========================================
+   STEP BOXES (WORKFLOW)
+   =========================================== */
+
+.step-box-purple {
+  background-color: #f3e5f5;
+  padding: 15px;
+  border-radius: 6px;
+  border-left: 4px solid #9c27b0;
+  height: 100%;
+}
+
+.step-box-purple h6 {
+  color: #7b1fa2;
+  margin-top: 0;
+}
+
+.step-box-purple p {
+  font-size: 12px;
+  margin: 0;
+  color: #555;
+}
+
+.step-box-pink {
+  background-color: #fce4ec;
+  padding: 15px;
+  border-radius: 6px;
+  border-left: 4px solid #e91e63;
+  height: 100%;
+}
+
+.step-box-pink h6 {
+  color: #c2185b;
+  margin-top: 0;
+}
+
+.step-box-pink p {
+  font-size: 12px;
+  margin: 0;
+  color: #555;
+}
+
+/* ===========================================
+   SPATIAL TRANSCRIPTOMIC - THEME SAPIN CLAIR
+   =========================================== */
+
+/* Header vert sapin clair */
+.header-green-spatial {
+  background: linear-gradient(135deg, #c8e6c9 0%, #81c784 100%);
+  padding: 30px;
+  margin: -15px -15px 30px -15px;
+  border-radius: 0;
+  color: white;
+  text-align: center;
+}
+
+/* Info box verte */
+.info-box-green {
+  background-color: #e8f5e9;
+  padding: 20px;
+  border-radius: 8px;
+  border-left: 4px solid #66bb6a;
+  margin-bottom: 25px;
+}
+
+.info-box-green h4 {
+  color: #495057;
+  margin: 0;
+}
+
+.info-box-green h5 {
+  color: #43a047;
+  margin-top: 15px;
+}
+
+/* ===========================================
+   CARDS VERTES SAPIN CLAIR
+   =========================================== */
+
+/* Card vert très clair/pastel */
+.card-green-light {
+  background: linear-gradient(135deg, #c8e6c9 0%, #a5d6a7 100%);
+  padding: 25px;
+  border-radius: 10px;
+  height: 100%;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  color: white;
+}
+
+/* Card vert moyen */
+.card-green-medium {
+  background: linear-gradient(135deg, #81c784 0%, #66bb6a 100%);
+  padding: 25px;
+  border-radius: 10px;
+  height: 100%;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  color: white;
+}
+
+/* Card vert plus foncé */
+.card-green-dark {
+  background: linear-gradient(135deg, #66bb6a 0%, #4caf50 100%);
+  padding: 25px;
+  border-radius: 10px;
+  height: 100%;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  color: white;
+}
+
+
+
+/* ===========================================
+   STEP BOXES VERTES
+   =========================================== */
+
+.step-box-green-light {
+  background-color: #e8f5e9;
+  padding: 15px;
+  border-radius: 6px;
+  border-left: 4px solid #66bb6a;
+  height: 100%;
+}
+
+.step-box-green-light h6 {
+  color: #43a047;
+  margin-top: 0;
+}
+
+.step-box-green-light p {
+  font-size: 12px;
+  margin: 0;
+  color: #555;
+}
+
+.step-box-green-medium {
+  background-color: #c8e6c9;
+  padding: 15px;
+  border-radius: 6px;
+  border-left: 4px solid #4caf50;
+  height: 100%;
+}
+
+.step-box-green-medium h6 {
+  color: #2e7d32;
+  margin-top: 0;
+}
+
+.step-box-green-medium p {
+  font-size: 12px;
+  margin: 0;
+  color: #555;
+}
+
+.step-box-green-dark {
+  background-color: #a5d6a7;
+  padding: 15px;
+  border-radius: 6px;
+  border-left: 4px solid #388e3c;
+  height: 100%;
+}
+
+.step-box-green-dark h6 {
+  color: #1b5e20;
+  margin-top: 0;
+}
+
+.step-box-green-dark p {
+  font-size: 12px;
+  margin: 0;
+  color: #555;
+}
+
+
+
+/* Info box rose clair */
+.info-box-rose-spatial {
+  background-color: #fce4ec;
+  padding: 20px;
+  border-radius: 8px;
+  border-left: 4px solid #c2185b;
+  margin-bottom: 25px;
+}
+
+.info-box-rose-spatial h4 {
+  color: #495057;
+  margin: 0;
+}
+
+.info-box-rose-spatial h5 {
+  color: #c2185b;
+  margin-top: 15px;
+}
+
+/* ===========================================
+   PARAMETER BOX (grise avec 4 mini-boxes)
+   =========================================== */
+
+.spatial-parameter-box {
+  background-color: #f8f9fa;
+  padding: 20px;
+  border-radius: 8px;
+  border: 2px solid #dee2e6;
+  margin-bottom: 20px;
+}
+
+.spatial-parameter-box h4 {
+  color: #495057;
+  margin-top: 0;
+  margin-bottom: 15px;
+  font-weight: bold;
+}
+
+/* Mini parameter cards avec différentes bordures */
+.param-card-bordeaux {
+  background-color: white;
+  padding: 15px;
+  border-radius: 6px;
+  border-left: 4px solid #8B1538;
+}
+
+.param-card-rose-dark {
+  background-color: white;
+  padding: 15px;
+  border-radius: 6px;
+  border-left: 4px solid #A91B4E;
+}
+
+.param-card-rose-medium {
+  background-color: white;
+  padding: 15px;
+  border-radius: 6px;
+  border-left: 4px solid #C42E5C;
+}
+
+.param-card-rose-light {
+  background-color: white;
+  padding: 15px;
+  border-radius: 6px;
+  border-left: 4px solid #D4578A;
+}
+
+.param-card-bordeaux label,
+.param-card-rose-dark label,
+.param-card-rose-medium label,
+.param-card-rose-light label {
+  font-weight: bold;
+  color: #495057;
+}
+
+.param-card-bordeaux p,
+.param-card-rose-dark p,
+.param-card-rose-medium p,
+.param-card-rose-light p {
+  font-size: 11px;
+  color: #6c757d;
+  margin: 5px 0 0 0;
+}
+
+/* ===========================================
+   CARDS BORDEAUX/ROSE SPATIAL (les 2 grandes cards)
+   =========================================== */
+
+/* Card bordeaux foncé (gauche) */
+.card-bordeaux-spatial {
+  background: linear-gradient(135deg, #8B1538 0%, #C42E5C 100%);
+  padding: 25px;
+  border-radius: 10px;
+  min-height: 500px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  color: white;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Card rose moyen (droite) */
+.card-rose-spatial {
+  background: linear-gradient(135deg, #C42E5C 0%, #E74C70 100%);
+  padding: 25px;
+  border-radius: 10px;
+  min-height: 500px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  color: white;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header des cards avec icône */
+.spatial-card-header {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.spatial-card-header h4 {
+  margin: 0;
+  font-weight: bold;
+}
+
+/* Section d'info dans les cards */
+.spatial-card-info {
+  background-color: rgba(255,255,255,0.1);
+  padding: 15px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  flex-grow: 1;
+}
+
+.spatial-card-info p {
+  margin-bottom: 10px;
+}
+
+.spatial-card-info strong {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.spatial-card-info ul {
+  margin: 0 0 15px 0;
+  padding-left: 20px;
+  font-size: 14px;
+}
+
+.spatial-card-info pre {
+  background-color: rgba(0,0,0,0.2);
+  padding: 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  margin: 0 0 15px 0;
+  overflow-x: auto;
+}
+
+/* Highlight box dans les cards */
+.spatial-card-highlight {
+  background-color: rgba(255,255,255,0.15);
+  padding: 10px;
+  border-radius: 4px;
+  font-size: 13px;
+  margin-top: 12px;
+}
+
+/* Footer des cards (upload button zone) */
+.spatial-card-footer {
+  margin-top: auto;
+  text-align: center;
+}
+
+.spatial-card-footer-text {
+  text-align: center;
+  margin-top: 15px;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+/* ===========================================
+   BOUTONS SPATIAUX
+   =========================================== */
+
+/* Style des boutons upload Visium */
+#spatial_file_progress { display: none !important; }
+#spatial_file + .form-group .form-control { display: none !important; }
+#spatial_file .btn-file {
+  width: 100% !important;
+  background-color: white !important;
+  color: #8B1538 !important;
+  border: none !important;
+  font-weight: bold !important;
+  padding: 15px !important;
+  border-radius: 8px !important;
+  font-size: 16px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  transition: all 0.3s ease !important;
+}
+#spatial_file .btn-file:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+}
+#spatial_file label { display: none !important; }
+
+/* Style des boutons upload Seurat */
+#load_spatial_seurat_file_progress { display: none !important; }
+#load_spatial_seurat_file + .form-group .form-control { display: none !important; }
+#load_spatial_seurat_file .btn-file {
+  width: 100% !important;
+  background-color: white !important;
+  color: #C42E5C !important;
+  border: none !important;
+  font-weight: bold !important;
+  padding: 15px !important;
+  border-radius: 8px !important;
+  font-size: 16px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  transition: all 0.3s ease !important;
+}
+#load_spatial_seurat_file .btn-file:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+}
+#load_spatial_seurat_file label { display: none !important; }
+
+/* ===========================================
+   IMAGE UPLOAD BOX
+   =========================================== */
+
+.spatial-image-upload-box {
+  margin-top: 25px;
+  background-color: #f8f9fa;
+  padding: 20px;
+  border-radius: 8px;
+  border: 2px solid #dee2e6;
+}
+
+.spatial-image-upload-box h5 {
+  color: #495057;
+  margin-top: 0;
+  margin-bottom: 15px;
+}
+
+.spatial-image-upload-box p {
+  font-size: 12px;
+  color: #6c757d;
+  margin-top: 5px;
+}
+
+/* ===========================================
+   STEP BOXES SPATIAL
+   =========================================== */
+
+.step-box-bordeaux {
+  background-color: #fce4ec;
+  padding: 15px;
+  border-radius: 6px;
+  border-left: 4px solid #8B1538;
+  height: 100%;
+}
+
+.step-box-bordeaux h6 {
+  color: #8B1538;
+  margin-top: 0;
+}
+
+.step-box-bordeaux p {
+  font-size: 12px;
+  margin: 0;
+  color: #555;
+}
+
+.step-box-rose {
+  background-color: #fce4ec;
+  padding: 15px;
+  border-radius: 6px;
+  border-left: 4px solid #C42E5C;
+  height: 100%;
+}
+
+.step-box-rose h6 {
+  color: #C42E5C;
+  margin-top: 0;
+}
+
+.step-box-rose p {
+  font-size: 12px;
+  margin: 0;
+  color: #555;
+}
+
+.step-box-rose-light {
+  background-color: #fce4ec;
+  padding: 15px;
+  border-radius: 6px;
+  border-left: 4px solid #E74C70;
+  height: 100%;
+}
+
+.step-box-rose-light h6 {
+  color: #E74C70;
+  margin-top: 0;
+}
+
+.step-box-rose-light p {
+  font-size: 12px;
+  margin: 0;
+  color: #555;
+}
+
+/* ===========================================
+   CELLCHAT ANALYSIS - THEME TURQUOISE/ROSE
+   =========================================== */
+
+/* Header turquoise/rose gradient */
+.header-cellchat {
+  background: linear-gradient(135deg, #4AA3A2 0%, #CA3C66 100%);
+  padding: 30px;
+  margin: -15px -15px 30px -15px;
+  border-radius: 0;
+  color: white;
+  text-align: center;
+}
+
+.header-cellchat h2 {
+  margin: 0 0 10px 0;
+  font-weight: bold;
+  font-size: 32px;
+}
+
+.header-cellchat p {
+  margin: 0;
+  font-size: 18px;
+  opacity: 0.9;
+}
+
+/* Info box turquoise clair */
+.info-box-cellchat {
+  background-color: #e0f2f1;
+  padding: 20px;
+  border-radius: 8px;
+  border-left: 4px solid #4AA3A2;
+  margin-bottom: 25px;
+}
+
+.info-box-cellchat h4 {
+  color: #495057;
+  margin: 0;
+}
+
+.info-box-cellchat h5 {
+  color: #4AA3A2;
+  margin-top: 15px;
+}
+
+/* ===========================================
+   CARDS CELLCHAT
+   =========================================== */
+
+/* Card turquoise clair */
+.card-cellchat-light {
+  background: linear-gradient(135deg, #6BB8B7 0%, #8DCCCB 100%);
+  padding: 25px;
+  border-radius: 10px;
+  height: 100%;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  color: white;
+}
+
+/* Card turquoise moyen */
+.card-cellchat-medium {
+  background: linear-gradient(135deg, #4AA3A2 0%, #6BB8B7 100%);
+  padding: 25px;
+  border-radius: 10px;
+  height: 100%;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  color: white;
+}
+
+/* Card turquoise foncé */
+.card-cellchat-dark {
+  background: linear-gradient(135deg, #3A8988 0%, #4AA3A2 100%);
+  padding: 25px;
+  border-radius: 10px;
+  height: 100%;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  color: white;
+}
+
+/* Card rose (pour contraste) */
+.card-cellchat-rose {
+  background: linear-gradient(135deg, #CA3C66 0%, #D55B7E 100%);
+  padding: 25px;
+  border-radius: 10px;
+  height: 100%;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  color: white;
+}
+
+/* ===========================================
+   BOX GRADIENTS CELLCHAT
+   =========================================== */
+
+/* Box gradient turquoise clair */
+.box-gradient-cellchat-light {
+  background: linear-gradient(135deg, #8DCCCB 0%, #6BB8B7 100%);
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid rgba(74, 163, 162, 0.3);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  margin-bottom: 20px;
+}
+
+/* Box gradient turquoise moyen */
+.box-gradient-cellchat-medium {
+  background: linear-gradient(135deg, #6BB8B7 0%, #4AA3A2 100%);
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid rgba(74, 163, 162, 0.3);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  margin-bottom: 20px;
+}
+
+/* Box gradient turquoise foncé */
+.box-gradient-cellchat-dark {
+  background: linear-gradient(135deg, #4AA3A2 0%, #3A8988 100%);
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid rgba(74, 163, 162, 0.3);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  margin-bottom: 20px;
+}
+
+/* Box gradient rose */
+.box-gradient-cellchat-rose {
+  background: linear-gradient(135deg, #D55B7E 0%, #CA3C66 100%);
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid rgba(202, 60, 102, 0.3);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  margin-bottom: 20px;
+}
+
+/* ===========================================
+   BOUTONS CELLCHAT
+   =========================================== */
+
+/* Bouton gradient turquoise */
+.btn-gradient-cellchat {
+  background: linear-gradient(135deg, #4AA3A2 0%, #6BB8B7 100%) !important;
+  color: white !important;
+  border: none !important;
+  font-weight: bold !important;
+  padding: 12px 20px !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  transition: all 0.3s ease !important;
+}
+
+.btn-gradient-cellchat:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+  background: linear-gradient(135deg, #3A8988 0%, #4AA3A2 100%) !important;
+}
+
+/* Bouton blanc avec texte turquoise */
+.btn-white-cellchat {
+  background-color: white !important;
+  color: #4AA3A2 !important;
+  border: 2px solid #4AA3A2 !important;
+  font-weight: bold !important;
+  padding: 12px 20px !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  transition: all 0.3s ease !important;
+}
+
+.btn-white-cellchat:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+  background-color: #4AA3A2 !important;
+  color: white !important;
+}
+
+/* Bouton gradient rose */
+.btn-gradient-cellchat-rose {
+  background: linear-gradient(135deg, #CA3C66 0%, #D55B7E 100%) !important;
+  color: white !important;
+  border: none !important;
+  font-weight: bold !important;
+  padding: 12px 20px !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  transition: all 0.3s ease !important;
+}
+
+.btn-gradient-cellchat-rose:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+  background: linear-gradient(135deg, #B22E55 0%, #CA3C66 100%) !important;
+}
+
+/* Bouton blanc avec texte rose */
+.btn-white-cellchat-rose {
+  background-color: white !important;
+  color: #CA3C66 !important;
+  border: 2px solid #CA3C66 !important;
+  font-weight: bold !important;
+  padding: 12px 20px !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  transition: all 0.3s ease !important;
+}
+
+.btn-white-cellchat-rose:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+  background-color: #CA3C66 !important;
+  color: white !important;
+}
+
+/* ===========================================
+   STEP BOXES CELLCHAT
+   =========================================== */
+
+.step-box-cellchat-turquoise {
+  background-color: #e0f2f1;
+  padding: 15px;
+  border-radius: 6px;
+  border-left: 4px solid #4AA3A2;
+  height: 100%;
+}
+
+.step-box-cellchat-turquoise h6 {
+  color: #3A8988;
+  margin-top: 0;
+}
+
+.step-box-cellchat-turquoise p {
+  font-size: 12px;
+  margin: 0;
+  color: #555;
+}
+
+.step-box-cellchat-rose {
+  background-color: #fce4ec;
+  padding: 15px;
+  border-radius: 6px;
+  border-left: 4px solid #CA3C66;
+  height: 100%;
+}
+
+.step-box-cellchat-rose h6 {
+  color: #B22E55;
+  margin-top: 0;
+}
+
+.step-box-cellchat-rose p {
+  font-size: 12px;
+  margin: 0;
+  color: #555;
+}
+
+.step-box-cellchat-mixed {
+  background: linear-gradient(to right, #e0f2f1 0%, #fce4ec 100%);
+  padding: 15px;
+  border-radius: 6px;
+  border-left: 4px solid #4AA3A2;
+  border-right: 4px solid #CA3C66;
+  height: 100%;
+}
+
+.step-box-cellchat-mixed h6 {
+  color: #495057;
+  margin-top: 0;
+}
+
+.step-box-cellchat-mixed p {
+  font-size: 12px;
+  margin: 0;
+  color: #555;
+}
+
+/* ===========================================
+   LOGS CONTAINER CELLCHAT
+   =========================================== */
+
+.logs-container-cellchat {
+  background-color: #263238;
+  border-radius: 8px;
+  padding: 15px;
+  margin-top: 20px;
+  border: 2px solid #4AA3A2;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.logs-container-cellchat pre {
+  background-color: #1e272e;
+  color: #6BB8B7;
+  padding: 15px;
+  border-radius: 6px;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  max-height: 300px;
+  overflow-y: auto;
+  margin: 0;
+  border-left: 3px solid #4AA3A2;
+}
+
+/* ===========================================
+   UTILITIES
+   =========================================== */
+
+.btn-full-width {
+  width: 100%;
+}
+
+.box-title {
+  margin: 0 0 15px 0;
+  color: white;
+}
+
+/* ===========================================
+   MONOCLE TRAJECTORY TAB STYLES
+   =========================================== */
+
+/* Blue Gradient Header */
+.header-blue-gradient {
+  background: linear-gradient(135deg, #1e88e5 0%, #1565c0 100%);
+  padding: 30px;
+  margin: -15px -15px 30px -15px;
+  border-radius: 0;
+  color: white;
+  text-align: center;
+}
+
+.header-blue-gradient h2 {
+  margin: 0 0 10px 0;
+  font-weight: bold;
+  font-size: 32px;
+}
+
+.header-blue-gradient p {
+  margin: 0;
+  font-size: 18px;
+  opacity: 0.9;
+}
+
+/* Info Box Light Blue */
+.info-box-light-blue {
+  background-color: #e1f5fe;
+  padding: 20px;
+  border-radius: 8px;
+  border-left: 4px solid #0288d1;
+  margin-bottom: 25px;
+}
+
+.info-toggle {
+  cursor: pointer;
+}
+
+.info-toggle .chevron {
+  float: right;
+  font-size: 14px;
+}
+
+.info-content-hidden {
+  display: none;
+  margin-top: 15px;
+}
+
+.info-content-hidden h5 {
+  color: #0277bd;
+  margin-top: 15px;
+}
+
+.info-content-hidden ul {
+  line-height: 1.8;
+}
+
+/* Yellow Alert Box */
+.alert-box-yellow {
+  background-color: #fff9c4;
+  padding: 12px;
+  border-radius: 6px;
+  border-left: 3px solid #fbc02d;
+  margin-top: 15px;
+}
+
+.alert-box-yellow p {
+  margin: 5px 0;
+}
+
+/* Documentation Link */
+.docs-link {
+  margin-top: 15px;
+  font-size: 13px;
+}
+
+.docs-link a {
+  color: #0277bd;
+  text-decoration: none;
+}
+
+.docs-link a:hover {
+  text-decoration: underline;
+}
+
+/* Section Headers */
+.section-title-gray {
+  color: #495057;
+  margin-bottom: 15px;
+  font-weight: bold;
+}
+
+/* Blue Gradient Card - Main */
+.card-blue-gradient {
+  background: linear-gradient(135deg, #1e88e5 0%, #1565c0 100%);
+  padding: 25px;
+  border-radius: 10px;
+  min-height: 380px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  color: white;
+  display: flex;
+  flex-direction: column;
+}
+
+.card-header-center {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.icon-circle-white {
+  background-color: rgba(255,255,255,0.2);
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 15px;
+}
+
+.icon-circle-white i {
+  font-size: 36px;
+}
+
+.card-header-center h4 {
+  margin: 0;
+  font-weight: bold;
+}
+
+.card-requirements-box {
+  background-color: rgba(255,255,255,0.1);
+  padding: 15px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  flex-grow: 1;
+}
+
+.card-requirements-box p {
+  margin-bottom: 10px;
+}
+
+.card-requirements-box ul {
+  margin: 0 0 15px 0;
+  padding-left: 20px;
+  font-size: 14px;
+}
+
+.card-footer-auto {
+  margin-top: auto;
+}
+
+/* Gray Info Card */
+.card-gray-bordered {
+  background-color: #f8f9fa;
+  padding: 25px;
+  border-radius: 10px;
+  min-height: 380px;
+  border: 2px solid #dee2e6;
+  display: flex;
+  flex-direction: column;
+}
+
+.card-gray-bordered h4 {
+  color: #495057;
+  margin-top: 0;
+  margin-bottom: 20px;
+  font-weight: bold;
+}
+
+.card-content-flex {
+  flex-grow: 1;
+}
+
+/* Status Box */
+.status-box-blue {
+  background-color: #e3f2fd;
+  padding: 15px;
+  border-radius: 6px;
+  border-left: 4px solid #2196f3;
+  margin-top: auto;
+}
+
+.status-content-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.status-content-center i {
+  font-size: 20px;
+  margin-right: 10px;
+  color: #1976d2;
+}
+
+.status-content-center span {
+  color: #1976d2;
+  font-weight: 500;
+}
+
+/* Workflow Container */
+.workflow-container-gray {
+  background-color: #f8f9fa;
+  padding: 25px;
+  border-radius: 8px;
+  border: 2px solid #dee2e6;
+}
+
+/* Workflow Step Cards */
+.workflow-step {
+  text-align: center;
+  padding: 20px;
+  background-color: white;
+  border-radius: 8px;
+  min-height: 250px;
+  position: relative;
+}
+
+.step-border-blue {
+  border: 2px solid #4facfe;
+}
+
+.step-border-green {
+  border: 2px solid #00c853;
+}
+
+.step-border-orange {
+  border: 2px solid #ffa726;
+}
+
+.step-number {
+  position: absolute;
+  top: -15px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: white;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.step-number-blue-gradient {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+
+.step-number-green-gradient {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+}
+
+.step-number-pink-gradient {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+.step-content {
+  margin-top: 20px;
+}
+
+.step-icon-large {
+  font-size: 40px;
+  margin-bottom: 15px;
+}
+
+.step-icon-blue {
+  color: #4facfe;
+}
+
+.step-icon-green {
+  color: #00c853;
+}
+
+.step-icon-orange {
+  color: #ffa726;
+}
+
+.step-title {
+  color: #495057;
+  font-weight: bold;
+  margin-bottom: 15px;
+}
+
+.step-description {
+  font-size: 13px;
+  color: #6c757d;
+  margin-bottom: 20px;
+}
+
+/* Action Buttons */
+.btn-gradient-blue {
+  width: 90%;
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  border: none;
+  color: white;
+  font-weight: bold;
+  margin-top: auto;
+  transition: all 0.3s ease;
+}
+
+.btn-gradient-blue:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.btn-gradient-green {
+  width: 90%;
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  border: none;
+  color: white;
+  font-weight: bold;
+  transition: all 0.3s ease;
+}
+
+.btn-gradient-green:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.btn-gradient-pink {
+  width: 90%;
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  border: none;
+  color: white;
+  font-weight: bold;
+  margin-top: 5px;
+  transition: all 0.3s ease;
+}
+
+.btn-gradient-pink:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+/* Custom Box Blue Gradient (Same as Load Card) */
+.box-blue-gradient {
+  background: linear-gradient(135deg, #1e88e5 0%, #1565c0 100%);
+  border-radius: 10px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  overflow: hidden;
+}
+
+.box-blue-gradient .box-header {
+  background-color: rgba(255,255,255,0.15);
+  padding: 15px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.2);
+  color: white;
+}
+
+.box-blue-gradient .box-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: bold;
+  color: white;
+}
+
+.box-blue-gradient .box-body {
+  background-color: white;
+  padding: 20px;
+  min-height: 500px;
+}
+
+/* Custom Box Green Gradient (Same as Construct Graph button) */
+.box-green-gradient {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  border-radius: 10px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  overflow: hidden;
+}
+
+.box-green-gradient .box-header {
+  background-color: rgba(255,255,255,0.15);
+  padding: 15px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.2);
+  color: white;
+}
+
+.box-green-gradient .box-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: bold;
+  color: white;
+}
+
+.box-green-gradient .box-body {
+  background-color: white;
+  padding: 20px;
+}
+
+/* Box Header Icons */
+.box-header i {
+  margin-right: 8px;
+}
+
+/* File Upload Custom Styling */
+#load_seurat_file_monocle_progress { 
+  display: none !important; 
+}
+
+#load_seurat_file_monocle + .form-group .form-control { 
+  display: none !important; 
+}
+
+#load_seurat_file_monocle .btn-file {
+  width: 100% !important;
+  background-color: white !important;
+  color: #0277bd !important;
+  border: none !important;
+  font-weight: bold !important;
+  padding: 15px !important;
+  border-radius: 8px !important;
+  font-size: 16px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  transition: all 0.3s ease !important;
+}
+
+#load_seurat_file_monocle .btn-file:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+  background-color: #f8f9fa !important;
+}
+
+#load_seurat_file_monocle label { 
+  display: none !important; 
+}
+
+/* Download Controls */
+.download-button-full {
+  width: 100%;
+  margin-top: 25px;
+}
+
+/* Results Section */
+.results-row-spacing {
+  margin-top: 30px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .workflow-step {
+    margin-bottom: 20px;
+  }
+  
+  .card-blue-gradient,
+  .card-gray-bordered {
+    margin-bottom: 20px;
+  }
+}
+
+/* Action Description Text */
+.action-description {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #6c757d;
+}
+
+/* Label Style */
+.label-bold {
+  font-weight: 600;
+  color: #495057;
+}
+
+/* Table Container */
+.data-table-container {
+  margin-top: 20px;
+  background-color: white;
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+}
+
+/* Control Panel */
+.control-panel-gray {
+  background-color: #f8f9fa;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+/* Plot Container */
+.plot-output-container {
+  position: relative;
+  background-color: white;
+  border-radius: 8px;
+  padding: 20px;
+}
+
+/* Separator Line */
+.separator-line {
+  border-top: 1px solid #dee2e6;
+  margin: 20px 0;
+}
+
+/* Button alignment helper */
+.button-group-aligned {
+  margin-top: 25px;
+}
+
+/* Fix button widths in boxes */
+.box-blue-gradient .btn-gradient-blue,
+.box-blue-gradient .btn-gradient-green,
+.box-green-gradient .btn-gradient-blue,
+.box-green-gradient .btn-gradient-green {
+  width: 100%;
+}
+
+
+
+/* Magenta + Cyan (moderne et contrasté) */
+.header-magenta-cyan {
+  background: linear-gradient(135deg, #e91e63 0%, #00bcd4 100%);
+  padding: 30px;
+  margin: -15px -15px 30px -15px;
+  border-radius: 0;
+  color: white;
+  text-align: center;
+}
+
+.header-magenta-cyan h2 {
+  margin: 0 0 10px 0;
+  font-weight: bold;
+  font-size: 32px;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+}
+
+.header-magenta-cyan p {
+  margin: 0;
+  font-size: 18px;
+  opacity: 0.95;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+}
+
+.info-box-magenta-cyan {
+  background-color: #fce4ec;
+  padding: 20px;
+  border-radius: 8px;
+  border-left: 4px solid #e91e63;
+  margin-bottom: 25px;
+}
+
+.card-magenta {
+  background: linear-gradient(135deg, #ec407a 0%, #e91e63 100%);
+  padding: 25px;
+  border-radius: 10px;
+  min-height: 500px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  color: white;
+  display: flex;
+  flex-direction: column;
+}
+
+.card-cyan {
+  background: linear-gradient(135deg, #26c6da 0%, #00bcd4 100%);
+  padding: 25px;
+  border-radius: 10px;
+  min-height: 500px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  color: white;
+  display: flex;
+  flex-direction: column;
+}
+
+.btn-gradient-magenta {
+  background: linear-gradient(135deg, #ec407a 0%, #e91e63 100%);
+  color: white;
+  border: none;
+  transition: all 0.3s ease;
+}
+
+.btn-gradient-magenta:hover {
+  background: linear-gradient(135deg, #e91e63 0%, #c2185b 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.btn-gradient-cyan {
+  background: linear-gradient(135deg, #26c6da 0%, #00bcd4 100%);
+  color: white;
+  border: none;
+  transition: all 0.3s ease;
+}
+
+.btn-gradient-cyan:hover {
+  background: linear-gradient(135deg, #00bcd4 0%, #0097a7 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.step-box-magenta {
+  background-color: #fce4ec;
+  padding: 15px;
+  border-radius: 6px;
+  border-left: 4px solid #e91e63;
+  height: 100%;
+}
+
+.step-box-magenta h6 {
+  color: #c2185b;
+  margin-top: 0;
+}
+
+.step-box-magenta p {
+  font-size: 12px;
+  margin: 0;
+  color: #555;
+}
+
+.step-box-cyan {
+  background-color: #e0f7fa;
+  padding: 15px;
+  border-radius: 6px;
+  border-left: 4px solid #00bcd4;
+  height: 100%;
+}
+
+.step-box-cyan h6 {
+  color: #00838f;
+  margin-top: 0;
+}
+
+.step-box-cyan p {
+  font-size: 12px;
+  margin: 0;
+  color: #555;
+}
+
+.step-box-magenta-clair {
+  background-color: #fce4ec;
+  padding: 15px;
+  border-radius: 6px;
+  border-left: 4px solid #ec407a;
+  height: 100%;
+}
+
+.step-box-magenta-clair h6 {
+  color: #d81b60;
+  margin-top: 0;
+}
+
+.step-box-magenta-clair p {
+  font-size: 12px;
+  margin: 0;
+  color: #555;
+}
+
+.param-card-magenta {
+  background-color: #fce4ec;
+  padding: 15px;
+  border-radius: 6px;
+  border-left: 3px solid #e91e63;
+}
+
+.param-card-magenta-clair {
+  background-color: #fce4ec;
+  padding: 15px;
+  border-radius: 6px;
+  border-left: 3px solid #ec407a;
+}
+
+.param-card-cyan {
+  background-color: #e0f7fa;
+  padding: 15px;
+  border-radius: 6px;
+  border-left: 3px solid #00bcd4;
+}
+
+.param-card-cyan-clair {
+  background-color: #e0f7fa;
+  padding: 15px;
+  border-radius: 6px;
+  border-left: 3px solid #26c6da;
+}
+
+
+/* ===========================================
+   WHITE BUTTONS WITH MAGENTA/CYAN TEXT
+   =========================================== */
+
+.btn-white-magenta {
+  background-color: white !important;
+  color: #ec407a !important;
+  border: none !important;
+  font-weight: bold !important;
+  padding: 12px 20px !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  transition: all 0.3s ease !important;
+}
+
+.btn-white-magenta:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+  color: #ec407a !important;
+}
+
+.btn-white-cyan {
+  background-color: white !important;
+  color: #26c6da !important;
+  border: none !important;
+  font-weight: bold !important;
+  padding: 12px 20px !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  transition: all 0.3s ease !important;
+}
+
+.btn-white-cyan:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+  color: #26c6da !important;
+}
+
+/* ===========================================
+   SPATIAL CARDS STYLING
+   =========================================== */
+
+.spatial-card-header {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.card-icon-circle {
+  background-color: rgba(255,255,255,0.2);
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 15px;
+  font-size: 36px;
+}
+
+.spatial-card-info {
+  background-color: rgba(255,255,255,0.1);
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.spatial-card-info strong {
+  display: block;
+  margin-bottom: 10px;
+  font-weight: bold;
+}
+
+.spatial-card-info ul {
+  margin: 0 0 15px 0;
+  padding-left: 20px;
+  font-size: 14px;
+}
+
+.spatial-card-info p {
+  font-size: 13px;
+  margin: 5px 0 0 0;
+  opacity: 0.9;
+}
+
+.spatial-card-highlight {
+  background-color: rgba(255,255,255,0.15);
+  padding: 10px;
+  border-radius: 4px;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.spatial-card-footer {
+  background-color: white;
+  padding: 15px;
+  border-radius: 8px;
+  margin-top: auto;
+}
+
+.spatial-card-footer-text {
+  text-align: center;
+  margin-top: 15px;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.spatial-parameter-label {
+  font-weight: bold;
+  margin-bottom: 10px;
+  display: block;
+}
+
+.spatial-input-info {
+  font-size: 13px;
+  margin: 5px 0 0 0;
+  opacity: 0.9;
+}
+
+.spatial-section-title {
+  color: #495057;
+  margin-bottom: 15px;
+  font-weight: bold;
+}
+
+.spatial-plot-box {
+  background: white;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.spatial-plot-title {
+  color: #495057;
+  margin-top: 0;
+}
+
+/* Full width button helper for spatial sections */
+.btn-full-width {
+  width: 100% !important;
+  margin-bottom: 10px !important;
+}
+
+/* ===========================================
+   CHECKBOX AND RADIO LABELS IN WHITE AREAS
+   =========================================== */
+
+.card-cyan .form-check-label,
+.card-magenta .form-check-label,
+.card-pink-pure .form-check-label,
+.spatial-card-footer .form-check-label {
+  color: #495057 !important;
+  font-weight: normal !important;
+}
+
+.card-cyan input[type="checkbox"] + label,
+.card-magenta input[type="checkbox"] + label,
+.spatial-card-footer input[type="checkbox"] + label {
+  color: #495057 !important;
+}
+
+/* For checkboxes in white background areas within colored cards */
+.card-cyan [style*="background-color: white"] label,
+.card-cyan [style*="background: white"] label,
+.card-magenta [style*="background-color: white"] label,
+.card-magenta [style*="background: white"] label {
+  color: #495057 !important;
+}
+
+/* Shiny checkbox specific */
+.checkbox label,
+.radio label {
+  color: inherit;
+}
+
+/* Force visibility in white sections of colored cards */
+div[style*="background-color: white"] .checkbox label,
+div[style*="background: white"] .checkbox label {
+  color: #495057 !important;
+  font-weight: normal !important;
+}
+
+/* ===========================================
+   GRADIENT INFO BOXES - Direct targeting
+   =========================================== */
+
+/* Info box purple -> violet gradient */
+.info-box.bg-purple {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  color: white !important;
+  border-radius: 10px !important;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
+  min-height: 120px !important;
+}
+
+.info-box.bg-purple .info-box-icon {
+  background-color: rgba(255,255,255,0.2) !important;
+  color: white !important;
+  border-radius: 10px 0 0 10px !important;
+}
+
+.info-box.bg-purple .info-box-text,
+.info-box.bg-purple .info-box-number {
+  color: white !important;
+}
+
+/* Info box fuchsia -> couleur unie rose/magenta */
+.info-box.bg-fuchsia {
+  background: #ec407a !important;
+  color: white !important;
+  border-radius: 10px !important;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
+  min-height: 120px !important;
+}
+
+.info-box.bg-fuchsia .info-box-icon {
+  background-color: rgba(255,255,255,0.2) !important;
+  color: white !important;
+  border-radius: 10px 0 0 10px !important;
+}
+
+.info-box.bg-fuchsia .info-box-text,
+.info-box.bg-fuchsia .info-box-number {
+  color: white !important;
+}
+
+
+/* Info box teal/aqua -> cyan gradient */
+.info-box.bg-teal,
+.info-box.bg-aqua {
+  background: linear-gradient(135deg, #26c6da 0%, #00bcd4 100%) !important;
+  color: white !important;
+  border-radius: 10px !important;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
+  min-height: 120px !important;
+}
+
+.info-box.bg-teal .info-box-icon,
+.info-box.bg-aqua .info-box-icon {
+  background-color: rgba(255,255,255,0.2) !important;
+  color: white !important;
+  border-radius: 10px 0 0 10px !important;
+}
+
+.info-box.bg-teal .info-box-text,
+.info-box.bg-teal .info-box-number,
+.info-box.bg-aqua .info-box-text,
+.info-box.bg-aqua .info-box-number {
+  color: white !important;
+}
+
+/* Info box green -> green gradient */
+.info-box.bg-green {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%) !important;
+  color: white !important;
+  border-radius: 10px !important;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
+  min-height: 120px !important;
+}
+
+.info-box.bg-green .info-box-icon {
+  background-color: rgba(255,255,255,0.2) !important;
+  color: white !important;
+  border-radius: 10px 0 0 10px !important;
+}
+
+.info-box.bg-green .info-box-text,
+.info-box.bg-green .info-box-number {
+  color: white !important;
+}
+/* ========================================
+   CLASSES POUR LES PLOTS ADAPTATIFS
+   ======================================== */
+
+/* Plot container normal */
+.expandable-plot-container {
+  position: relative;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+}
+
+.expandable-plot-container:hover {
+  border: 2px solid #4CAF50;
+  box-shadow: 0 0 10px rgba(76, 175, 80, 0.3);
+}
+
+/* Mode expanded - occupe tout l'écran */
+.expandable-plot-container.expanded {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 9999 !important;
+  background: white;
+  overflow: auto;
+  padding: 20px;
+}
+
+.expandable-plot-container.expanded img,
+.expandable-plot-container.expanded canvas {
+  max-width: 100% !important;
+  height: auto !important;
+}
+
+/* Indicateur "cliquez pour agrandir" */
+.expandable-plot-container::before {
+  content: "🔍 Click to expand";
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(76, 175, 80, 0.8);
+  color: white;
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+
+.expandable-plot-container:hover::before {
+  opacity: 1;
+}
+
+.expandable-plot-container.expanded::before {
+  content: "✕ Click to close";
+  background: rgba(244, 67, 54, 0.8);
+}
+
+/* ========================================
+   EXPANDABLE PLOTS - MAGENTA VERSION
+   ======================================== */
+.expandable-plot-magenta {
+  position: relative;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+  border-radius: 8px;
+}
+
+.expandable-plot-magenta:hover {
+  border: 2px solid #f093fb;
+  box-shadow: 0 0 15px rgba(240, 147, 251, 0.4);
+}
+
+.expandable-plot-magenta.expanded {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 9999 !important;
+  background: white;
+  overflow: auto;
+  padding: 20px;
+  border-radius: 0;
+}
+
+.expandable-plot-magenta.expanded img,
+.expandable-plot-magenta.expanded canvas {
+  max-width: 100% !important;
+  height: auto !important;
+}
+
+/* ========================================
+   EXPANDABLE PLOTS - CYAN VERSION
+   ======================================== */
+.expandable-plot-cyan {
+  position: relative;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+  border-radius: 8px;
+}
+
+.expandable-plot-cyan:hover {
+  border: 2px solid #26c6da;
+  box-shadow: 0 0 15px rgba(38, 198, 218, 0.4);
+}
+
+.expandable-plot-cyan.expanded {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 9999 !important;
+  background: white;
+  overflow: auto;
+  padding: 20px;
+  border-radius: 0;
+}
+
+.expandable-plot-cyan.expanded img,
+.expandable-plot-cyan.expanded canvas {
+  max-width: 100% !important;
+  height: auto !important;
+}
+
+
+
+/* ========================================
+   STAT CARDS - Beautiful Statistics Display
+   ======================================== */
+.stat-card {
+  display: flex;
+  align-items: center;
+  padding: 25px;
+  margin-bottom: 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  background: white;
+  border-left: 5px solid;
+}
+
+.stat-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+
+.stat-card-violet {
+  border-left-color: #667eea;
+  background: linear-gradient(135deg, #ffffff 0%, #f5f7ff 100%);
+}
+
+.stat-card-orange {
+  border-left-color: #ff9800;
+  background: linear-gradient(135deg, #ffffff 0%, #fff8f0 100%);
+}
+
+.stat-card-green {
+  border-left-color: #11998e;
+  background: linear-gradient(135deg, #ffffff 0%, #f0fff8 100%);
+}
+
+.stat-icon {
+  flex-shrink: 0;
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  margin-right: 25px;
+  opacity: 0.3;
+}
+
+.stat-card-violet .stat-icon {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.stat-card-orange .stat-icon {
+  background: linear-gradient(135deg, #ff9800 0%, #ff5722 100%);
+  color: white;
+}
+
+.stat-card-green .stat-icon {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  color: white;
+}
+
+.stat-content {
+  flex-grow: 1;
+}
+
+.stat-title {
+  font-size: 14px;nazareth
+  
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.stat-value {
+  font-size: 36px;
+  font-weight: 700;
+  color: #2c3e50;
+  line-height: 1;
+  margin-bottom: 5px;
+  font-family: "Source Sans Pro", sans-serif;
+}
+
+.stat-subtitle {
+  font-size: 12px;
+  color: #999;
+  font-style: italic;
+}
+
+/* Fix AdminLTE clipping for large dynamic plots */
+html, body {
+  height: auto !important;
+  overflow-y: auto !important;
+}
+
+.wrapper {
+  height: auto !important;
+  overflow: visible !important;
+}
+
+.content-wrapper, .right-side {
+  margin-top: 0px !important;
+  overflow-y: visible !important;
+  height: auto !important;
+  min-height: 100vh !important;
+}
+
+.tab-content, .tab-pane {
+  overflow: visible !important;
+  height: auto !important;
+}
