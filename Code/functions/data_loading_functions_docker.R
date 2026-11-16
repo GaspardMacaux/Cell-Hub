@@ -1,4 +1,4 @@
-# data_loading_functions_newarch.R
+# data_loading_functions.R
 
 ############################## Utility Functions ##############################
 
@@ -56,24 +56,82 @@ getClusters <- function(seurat_object) {
 }
 
 find10XFolder <- function(base_dir) {
+  # Locate and normalize a 10X Genomics output folder.
+  # Accepts non-standard file names by matching on keywords (barcode/feature/gene/matrix)
+  # and copies renamed files to a temp dir so Read10X() can consume them.
+  # Read10X reads a folder as-is only in two layouts: v3 (barcodes.tsv.gz, features.tsv.gz, matrix.mtx.gz) and
+  # v2 (barcodes.tsv, genes.tsv, matrix.mtx, uncompressed). Without genes.tsv it expects .gz files, so any other
+  # layout (uncompressed features.tsv, mixed compression, custom names) is copied as compressed canonical files.
+  # Returns path to a folder with canonical 10X filenames, or NULL.
   message(paste("Searching for 10X files in:", base_dir))
+  # Canonical names written by the normalization step
+  canonical <- list(
+    barcodes = list(pattern = "barcode", canonical = "barcodes.tsv.gz"),
+    features = list(pattern = "feature|gene", canonical = "features.tsv.gz"),
+    matrix   = list(pattern = "matrix", canonical = "matrix.mtx.gz")
+  )
+  # Exact (case-insensitive) names accepted for each file, compressed or not, v3 and v2 feature file names
+  exact_names <- list(barcodes = c("barcodes.tsv.gz", "barcodes.tsv"), features = c("features.tsv.gz", "features.tsv", "genes.tsv.gz", "genes.tsv"),
+                      matrix = c("matrix.mtx.gz", "matrix.mtx"))
+  # Try to match the three required files in a given folder (exact names first, keywords second)
+  matchFilesInFolder <- function(folder) {
+    all_files <- list.files(folder, full.names = TRUE, recursive = FALSE)
+    basenames_lower <- tolower(basename(all_files))
+    matched <- list()
+    for (slot_name in names(canonical)) {
+      exact <- basenames_lower %in% exact_names[[slot_name]]
+      fuzzy <- grepl(canonical[[slot_name]]$pattern, basenames_lower, perl = TRUE) & grepl("\\.(tsv|tsv\\.gz|mtx|mtx\\.gz)$", basenames_lower, perl = TRUE)
+      idx <- c(which(exact), which(fuzzy & !exact))[1]
+      if (is.na(idx)) return(NULL)
+      matched[[slot_name]] <- all_files[idx]
+    }
+    return(matched)
+  }
   folders <- list.dirs(base_dir, recursive = TRUE, full.names = TRUE)
   for (folder in folders) {
-    compressed_files <- list.files(
-      folder,
-      pattern = "barcodes\\.tsv\\.gz$|features\\.tsv\\.gz$|matrix\\.mtx\\.gz$|genes\\.tsv\\.gz$",
-      full.names = TRUE
-    )
-    uncompressed_files <- list.files(
-      folder,
-      pattern = "barcodes\\.tsv$|features\\.tsv$|matrix\\.mtx$|genes\\.tsv$",
-      full.names = TRUE
-    )
-    if (length(compressed_files) >= 3 || length(uncompressed_files) >= 3) {
-      message(paste("Found 10X files in:", folder))
+    matched <- matchFilesInFolder(folder)
+    if (is.null(matched)) next
+    message(paste("Found 10X-compatible files in:", folder))
+    for (slot_name in names(matched)) message(paste0("  [", slot_name, "] -> ", basename(matched[[slot_name]])))
+    names_lower <- vapply(matched, function(p) tolower(basename(p)), character(1))
+    # Layouts Read10X reads unchanged: v3 compressed, or v2 uncompressed
+    is_v3_gz <- identical(unname(names_lower), c("barcodes.tsv.gz", "features.tsv.gz", "matrix.mtx.gz"))
+    is_v2_plain <- identical(unname(names_lower), c("barcodes.tsv", "genes.tsv", "matrix.mtx"))
+    if (is_v3_gz || is_v2_plain) {
+      message("Filenames already readable by Read10X — using folder as-is")
       return(folder)
     }
+    # Copy files to a unique temp dir under compressed canonical names (v3 layout)
+    norm_dir <- tempfile(pattern = paste0("10x_normalized_", basename(folder), "_"))
+    dir.create(norm_dir, showWarnings = FALSE, recursive = TRUE)
+    message(paste("Copying renamed files to:", norm_dir))
+    success <- TRUE
+    for (slot_name in names(matched)) {
+      src <- matched[[slot_name]]
+      dest_gz <- file.path(norm_dir, canonical[[slot_name]]$canonical)
+      ok <- if (grepl("\\.gz$", src, ignore.case = TRUE)) {
+        file.copy(src, dest_gz, overwrite = TRUE)
+      } else {
+        # Compress on the fly
+        tryCatch({
+          R.utils::gzip(src, destname = dest_gz, overwrite = TRUE, remove = FALSE)
+          TRUE
+        }, error = function(e) {
+          message(paste("gzip failed for", basename(src), ":", conditionMessage(e)[1]))
+          FALSE
+        })
+      }
+      if (!ok) {
+        message(paste("Failed to copy/compress:", basename(src)))
+        success <- FALSE
+        break
+      }
+      message(paste0("  ", basename(src), " -> ", canonical[[slot_name]]$canonical))
+    }
+    if (!success) next
+    return(norm_dir)
   }
+  message("No complete set of 10X-compatible files found")
   return(NULL)
 }
 
@@ -96,57 +154,50 @@ extractAndProcessZip <- function(zip_path, dataset_name = NULL) {
   # Extract and process ZIP file with handling for nested ZIP files
   # Args:
   #   zip_path: Path to ZIP file
-  #   dataset_name: Name for dataset (optional)
+  #   dataset_name: Name for dataset (optional, used as a readable prefix of the folder name)
   # Returns:
-  #   Path to folder containing 10X files or NULL
-  
-  # Create unique identifier for this dataset
-  if (is.null(dataset_name)) {
-    dataset_name <- format(Sys.time(), "%Y%m%d_%H%M%S")
-  }
-  
-  # Create specific temporary folder for this dataset
+  #   Path to folder containing 10X files (the caller reads it, then may unlink the dataset folder)
   temp_base_dir <- file.path(tempdir(), "single_dataset")
   dir.create(temp_base_dir, showWarnings = FALSE, recursive = TRUE)
-  
-  dataset_dir <- file.path(temp_base_dir, paste0("dataset_", dataset_name))
+  # tempfile gives a unique folder: two uploads in the same second never share (and mix) their files
+  prefix <- paste0("dataset_", if (is.null(dataset_name)) "" else paste0(gsub("[^A-Za-z0-9_.-]", "_", dataset_name), "_"))
+  dataset_dir <- tempfile(pattern = prefix, tmpdir = temp_base_dir)
   dir.create(dataset_dir, showWarnings = FALSE, recursive = TRUE)
-  
   message(paste("Extracting zip file to unique directory:", dataset_dir))
-  
-  # Extract ZIP file
-  tryCatch({
-    unzip(zip_path, exdir = dataset_dir)
-    
-    # Search for nested ZIP files
+  # Extract ZIP file — let errors propagate so log_function in the caller sees them
+  unzip(zip_path, exdir = dataset_dir)
+  # Search for nested ZIP files
+  nested_zips <- list.files(dataset_dir, pattern = "\\.zip$", recursive = TRUE, full.names = TRUE)
+  while (length(nested_zips) > 0) {
+    for (nested_zip in nested_zips) {
+      message(paste("Extracting nested zip file:", nested_zip))
+      nested_dir <- file.path(dirname(nested_zip), tools::file_path_sans_ext(basename(nested_zip)))
+      dir.create(nested_dir, showWarnings = FALSE)
+      unzip(nested_zip, exdir = nested_dir)
+      file.remove(nested_zip)
+    }
     nested_zips <- list.files(dataset_dir, pattern = "\\.zip$", recursive = TRUE, full.names = TRUE)
-    
-    while (length(nested_zips) > 0) {
-      for (nested_zip in nested_zips) {
-        message(paste("Extracting nested zip file:", nested_zip))
-        nested_dir <- file.path(dirname(nested_zip), tools::file_path_sans_ext(basename(nested_zip)))
-        dir.create(nested_dir, showWarnings = FALSE)
-        unzip(nested_zip, exdir = nested_dir)
-        file.remove(nested_zip)  # Remove ZIP after extraction
-      }
-      # Check if there are remaining nested ZIP files
-      nested_zips <- list.files(dataset_dir, pattern = "\\.zip$", recursive = TRUE, full.names = TRUE)
+  }
+  # Search for folder containing 10X files
+  valid_folder <- find10XFolder(dataset_dir)
+  if (is.null(valid_folder)) {
+    # List extracted files to help diagnose detection failures
+    all_files <- list.files(dataset_dir, recursive = TRUE)
+    file_detail <- if (length(all_files) == 0) {
+      "no files found after extraction"
+    } else {
+      paste0(length(all_files), " file(s) extracted: ",
+             paste(head(all_files, 20), collapse = ", "),
+             if (length(all_files) > 20) paste0(" ... and ", length(all_files) - 20, " more") else "")
     }
-    
-    # Search for folder containing 10X files
-    valid_folder <- find10XFolder(dataset_dir)
-    
-    if (is.null(valid_folder)) {
-      stop("No complete set of 10X files found in the uploaded ZIP")
-    }
-    
-    return(valid_folder)
-    
-  }, error = function(e) {
-    message(paste("Error extracting zip:", e$message))
-    return(NULL)
-  })
+    unlink(dataset_dir, recursive = TRUE, force = TRUE)
+    stop(paste0("No complete set of 10X files found in the uploaded ZIP. ",
+                "Expected barcodes.tsv(.gz), features.tsv(.gz), matrix.mtx(.gz). ",
+                file_detail))
+  }
+  return(valid_folder)
 }
+
 
 validateAndCompleteSeurat <- function(seurat_object, log_function = message) {
   # Validate and complete preprocessing steps for a Seurat object
@@ -277,107 +328,106 @@ loadRawData <- function(file_path, dataset_type, species, log_function = message
 
 
 loadFromZip <- function(zip_path, dataset_type, mt_pattern, log_function = message) {
-  # Load data from ZIP file containing 10X files
-  
-  # Extract ZIP and find 10X files
   log_function("Extracting ZIP file...", "info")
   valid_folder <- extractAndProcessZip(zip_path)
+  if (is.null(valid_folder)) stop("Could not extract and process ZIP file")
   
-  if (is.null(valid_folder)) {
-    stop("Could not extract and process ZIP file")
-  }
-  
-  # Load 10X data
   log_function("Reading 10X data...", "info")
   data_10x <- Read10X(valid_folder)
   
-  # Detect data characteristics
-  n_barcodes <- ifelse(is.list(data_10x), ncol(data_10x[[1]]), ncol(data_10x))
-  n_features <- ifelse(is.list(data_10x), nrow(data_10x[[1]]), nrow(data_10x))
+  # Detect whether Read10X returned multimodal data (list) or single matrix
+  is_multimodal <- is.list(data_10x) && !is.matrix(data_10x) && !is.null(names(data_10x))
   
-  log_function(paste("Matrix dimensions:", format(n_features, big.mark = ","), 
+  if (is_multimodal) {
+    log_function(paste("Read10X returned a multimodal list with", length(data_10x),
+                       "element(s):", paste(names(data_10x), collapse = ", ")), "warning")
+  } else {
+    log_function(paste("Read10X returned a single matrix:",
+                       format(nrow(data_10x), big.mark = ","), "genes x",
+                       format(ncol(data_10x), big.mark = ","), "barcodes"), "info")
+  }
+  
+  n_barcodes <- if (is_multimodal) ncol(data_10x[[1]]) else ncol(data_10x)
+  n_features  <- if (is_multimodal) nrow(data_10x[[1]]) else nrow(data_10x)
+  log_function(paste("Matrix dimensions:", format(n_features, big.mark = ","),
                      "genes x", format(n_barcodes, big.mark = ","), "barcodes"), "info")
   
-  # Create Seurat object based on dataset type
   log_function("Creating Seurat object...", "info")
   
-  if (dataset_type == "snRNA") {
+  # Auto-detect RNA assay from multimodal list
+  extractRNAAssay <- function(data_list) {
+    if ("Gene Expression" %in% names(data_list)) return("Gene Expression")
+    candidates <- grep("RNA|Gene|Expression", names(data_list), ignore.case = TRUE, value = TRUE)
+    if (length(candidates) > 0) return(candidates[1])
+    return(NULL)
+  }
+  
+  if (is_multimodal) {
+    # Always extract RNA assay regardless of dataset_type — passing a list to
+    # CreateSeuratObject stacks all feature sets and inflates nrow(obj)
+    rna_assay <- extractRNAAssay(data_10x)
+    if (is.null(rna_assay)) stop("Could not identify RNA assay in multimodal data")
+    log_function(paste("Using RNA assay:", rna_assay), "info")
+    
     seuratObj <- CreateSeuratObject(
-      counts = data_10x,
+      counts  = data_10x[[rna_assay]],
       project = "RawData"
     )
     
-  } else if (dataset_type == "multiome") {
-    if (is.list(data_10x) && !is.matrix(data_10x)) {
-      # Multimodal data
-      log_function("Multiome data detected - identifying RNA assay", "info")
-      
-      rna_assay <- NULL
-      if ("Gene Expression" %in% names(data_10x)) {
-        rna_assay <- "Gene Expression"
-      } else {
-        rna_candidates <- grep("RNA|Gene|Expression", names(data_10x), ignore.case = TRUE, value = TRUE)
-        if (length(rna_candidates) > 0) {
-          rna_assay <- rna_candidates[1]
-        }
-      }
-      
-      if (is.null(rna_assay)) {
-        stop("Could not identify RNA assay in multimodal data")
-      }
-      
-      log_function(paste("Using RNA assay:", rna_assay), "info")
-      
-      seuratObj <- CreateSeuratObject(
-        counts = data_10x[[rna_assay]],
-        project = "RawData"
-      )
-      
-      # Add other assays
-      log_function("Adding additional assays...", "info")
+    # Add non-RNA assays only if user explicitly selected multiome
+    if (dataset_type == "multiome") {
+      log_function("Adding additional assays (multiome mode)...", "info")
       for (assay_name in names(data_10x)) {
         if (assay_name != rna_assay) {
-          log_function(paste("  - Adding assay:", assay_name), "debug")
+          log_function(paste("  - Adding assay:", assay_name), "info")
           seuratObj[[assay_name]] <- CreateAssayObject(counts = data_10x[[assay_name]])
         }
       }
-      
     } else {
-      # Single assay
-      seuratObj <- CreateSeuratObject(
-        counts = data_10x,
-        project = "RawData"
-      )
+      other_assays <- setdiff(names(data_10x), rna_assay)
+      if (length(other_assays) > 0) {
+        log_function(paste("snRNA mode: ignoring non-RNA modalities:",
+                           paste(other_assays, collapse = ", ")), "warning")
+      }
     }
+    
+  } else {
+    # Single matrix — safe to pass directly
+    seuratObj <- CreateSeuratObject(
+      counts  = data_10x,
+      project = "RawData"
+    )
   }
   
-  # Add mitochondrial percentage
   log_function("Calculating mitochondrial percentage...", "info")
   seuratObj[["percent.mt"]] <- PercentageFeatureSet(seuratObj, pattern = mt_pattern)
   
-  # Log results
   log_function(paste("Cells loaded:", format(ncol(seuratObj), big.mark = ",")), "success")
-  log_function(paste("Genes loaded:", format(nrow(seuratObj), big.mark = ",")), "success")
+  log_function(paste("Genes loaded (RNA assay):", format(nrow(seuratObj), big.mark = ",")), "success")
   
   return(seuratObj)
 }
 
 loadFromH5 <- function(h5_path, dataset_type, mt_pattern, log_function = message) {
-  # Load data from H5 file
-  
+  # Load data from a 10X H5 file. Multimodal files (cellranger-arc, CITE-seq) return a list: the RNA modality always
+  # becomes the RNA assay (a list passed to CreateSeuratObject would stack every feature set into one assay);
+  # the other modalities are added as separate assays in multiome mode only.
   log_function("Reading H5 file structure...", "info")
   h5_data <- Read10X_h5(h5_path)
-  
-  # Detect file characteristics
-  n_barcodes <- ifelse(is.list(h5_data), ncol(h5_data[[1]]), ncol(h5_data))
-  n_features <- ifelse(is.list(h5_data), nrow(h5_data[[1]]), nrow(h5_data))
-  
-  log_function(paste("Matrix dimensions:", format(n_features, big.mark = ","), 
-                     "genes x", format(n_barcodes, big.mark = ","), "barcodes"), "info")
-  
-  # Decide on filtering strategy
+  is_multimodal <- is.list(h5_data) && !is.matrix(h5_data) && !inherits(h5_data, "Matrix")
+  rna_assay <- NULL
+  if (is_multimodal) {
+    log_function(paste("Multimodal H5 with", length(h5_data), "modalities:", paste(names(h5_data), collapse = ", ")), "info")
+    rna_assay <- if ("Gene Expression" %in% names(h5_data)) "Gene Expression" else grep("RNA|Gene|Expression", names(h5_data), ignore.case = TRUE, value = TRUE)[1]
+    if (is.null(rna_assay) || is.na(rna_assay)) stop("Could not identify the RNA modality in the H5 file")
+    log_function(paste("Using RNA modality:", rna_assay), "info")
+  }
+  rna_data <- if (is_multimodal) h5_data[[rna_assay]] else h5_data
+  n_barcodes <- ncol(rna_data)
+  n_features <- nrow(rna_data)
+  log_function(paste("Matrix dimensions:", format(n_features, big.mark = ","), "genes x", format(n_barcodes, big.mark = ","), "barcodes"), "info")
+  # Raw (unfiltered) matrices hold every barcode of the chip: empty droplets are removed at creation
   is_raw_file <- n_barcodes > 500000
-  
   if (is_raw_file) {
     log_function("Detected RAW file - applying initial filtering", "warning")
     log_function("Filtering: min.cells=3, min.features=200", "info")
@@ -388,88 +438,66 @@ loadFromH5 <- function(h5_path, dataset_type, mt_pattern, log_function = message
     min_cells_filter <- 0
     min_features_filter <- 0
   }
-  
-  # Create Seurat object based on dataset type
   log_function("Creating Seurat object...", "info")
-  
-  if (dataset_type == "snRNA") {
-    seuratObj <- CreateSeuratObject(
-      counts = h5_data,
-      project = "RawData",
-      min.cells = min_cells_filter,
-      min.features = min_features_filter
-    )
-    
-  } else if (dataset_type == "multiome") {
-    if (is.list(h5_data) && !is.matrix(h5_data)) {
-      # Multimodal H5
-      log_function("Multiome data detected - identifying RNA assay", "info")
-      
-      rna_assay <- NULL
-      if ("Gene Expression" %in% names(h5_data)) {
-        rna_assay <- "Gene Expression"
-      } else {
-        rna_candidates <- grep("RNA|Gene|Expression", names(h5_data), ignore.case = TRUE, value = TRUE)
-        if (length(rna_candidates) > 0) {
-          rna_assay <- rna_candidates[1]
-        }
+  seuratObj <- CreateSeuratObject(counts = rna_data, project = "RawData", min.cells = min_cells_filter, min.features = min_features_filter)
+  if (is_multimodal) {
+    other_assays <- setdiff(names(h5_data), rna_assay)
+    if (identical(dataset_type, "multiome")) {
+      log_function("Adding additional assays (multiome mode)...", "info")
+      for (assay_name in other_assays) {
+        log_function(paste("  - Adding assay:", assay_name), "debug")
+        # Restricted to the cells kept by the RNA filtering, so every assay has the same cells
+        seuratObj[[assay_name]] <- CreateAssayObject(counts = h5_data[[assay_name]][, colnames(seuratObj), drop = FALSE])
       }
-      
-      if (is.null(rna_assay)) {
-        stop("Could not identify RNA assay in H5 file")
-      }
-      
-      log_function(paste("Using RNA assay:", rna_assay), "info")
-      rna_data <- h5_data[[rna_assay]]
-      
-      seuratObj <- CreateSeuratObject(
-        counts = rna_data,
-        project = "RawData",
-        min.cells = min_cells_filter,
-        min.features = min_features_filter
-      )
-      
-      # Add other assays
-      log_function("Adding additional assays...", "info")
-      for (assay_name in names(h5_data)) {
-        if (assay_name != rna_assay) {
-          log_function(paste("  - Adding assay:", assay_name), "debug")
-          seuratObj[[assay_name]] <- CreateAssayObject(counts = h5_data[[assay_name]])
-        }
-      }
-      
-    } else {
-      # Single assay H5
-      seuratObj <- CreateSeuratObject(
-        counts = h5_data,
-        project = "RawData",
-        min.cells = min_cells_filter,
-        min.features = min_features_filter
-      )
+    } else if (length(other_assays) > 0) {
+      log_function(paste("snRNA mode: ignoring non-RNA modalities:", paste(other_assays, collapse = ", ")), "warning")
     }
   }
-  
-  # Add mitochondrial percentage
   log_function("Calculating mitochondrial percentage...", "info")
   seuratObj[["percent.mt"]] <- PercentageFeatureSet(seuratObj, pattern = mt_pattern)
-  
-  # Log filtering results
   cells_kept <- ncol(seuratObj)
   genes_kept <- nrow(seuratObj)
   pct_cells_kept <- round(100 * cells_kept / n_barcodes, 2)
-  
-  log_function(paste("Cells retained:", format(cells_kept, big.mark = ","), 
-                     paste0("(", pct_cells_kept, "%)")), "success")
+  log_function(paste("Cells retained:", format(cells_kept, big.mark = ","), paste0("(", pct_cells_kept, "%)")), "success")
   log_function(paste("Genes retained:", format(genes_kept, big.mark = ",")), "success")
-  
   if (is_raw_file && pct_cells_kept < 5) {
     log_function(paste("Only", pct_cells_kept, "% of barcodes retained - this is normal for RAW files"), "info")
     log_function("Empty droplets successfully removed", "success")
   }
-  
   return(seuratObj)
 }
 
+convertSCEToSeurat <- function(sce, log_function = message) {
+  # Convert a SingleCellExperiment (e.g. from scater/scran/Bioconductor workflows) into a Seurat v5 object
+  # counts -> RNA counts, logcounts (if present) -> RNA data, colData -> meta.data, reducedDims -> reductions
+  # Args:
+  #   sce: SingleCellExperiment object with at least a "counts" assay
+  #   log_function: Logging function
+  # Returns:
+  #   Seurat object with an Assay5 "RNA" assay
+  if (!requireNamespace("SingleCellExperiment", quietly = TRUE)) stop("Package 'SingleCellExperiment' is required to read SingleCellExperiment objects")
+  assay_names <- SummarizedExperiment::assayNames(sce)
+  if (!"counts" %in% assay_names) stop("The SingleCellExperiment object has no 'counts' assay")
+  has_log <- "logcounts" %in% assay_names
+  log_function(sprintf("Converting SingleCellExperiment (%d genes x %d cells; assays: %s)", nrow(sce), ncol(sce),
+                       paste(assay_names, collapse = ", ")), "info")
+  # Seurat requires unique, non-empty feature and cell names
+  rownames(sce) <- make.unique(as.character(rownames(sce)))
+  colnames(sce) <- make.unique(as.character(colnames(sce)))
+  seurat_obj <- Seurat::as.Seurat(sce, counts = "counts", data = if (has_log) "logcounts" else NULL)
+  # as.Seurat names the assay after mainExpName() or "originalexp": the app expects "RNA"
+  current_assay <- DefaultAssay(seurat_obj)
+  if (current_assay != "RNA") seurat_obj <- RenameAssays(seurat_obj, assay.name = current_assay, new.assay.name = "RNA")
+  if (!inherits(seurat_obj[["RNA"]], "Assay5")) seurat_obj[["RNA"]] <- as(seurat_obj[["RNA"]], "Assay5")
+  if (!has_log) {
+    log_function("No 'logcounts' assay found: running LogNormalize", "info")
+    seurat_obj <- NormalizeData(seurat_obj, verbose = FALSE)
+  }
+  seurat_obj <- cleanH5ADFactors(seurat_obj, log_function)
+  log_function(sprintf("✓ Converted to Seurat (%d reduction(s): %s)", length(seurat_obj@reductions),
+                       paste(names(seurat_obj@reductions), collapse = ", ")), "success")
+  seurat_obj
+}
 
 # Load and restore colors after loading Seurat object for single dataset
 loadSeuratObject <- function(rds_path, add_dataset_column = FALSE, dataset_name = NULL,
@@ -478,6 +506,7 @@ loadSeuratObject <- function(rds_path, add_dataset_column = FALSE, dataset_name 
                              log_function = message) {
   # Load processed Seurat object from RDS or H5AD file
   # Handles: Seurat v4 objects (auto-converts to v5), combined Seurat+CellChat,
+  #          SingleCellExperiment objects (converted to Seurat),
   #          H5AD via schard, multi-layer v5 objects (auto-joins)
   # Args:
   #   rds_path: Path to RDS or H5AD file (Shiny temp path — may lack extension)
@@ -520,13 +549,17 @@ loadSeuratObject <- function(rds_path, add_dataset_column = FALSE, dataset_name 
                            paste(names(loaded_data$cellchat), collapse = ", ")), "info")
         log_function("  (Use CellChat module to load full analysis)", "info")
       }
+    } else if (inherits(loaded_data, "SingleCellExperiment")) {
+      # Bioconductor objects (scater/scran workflows) are converted to Seurat before any other step
+      log_function("✓ Detected SingleCellExperiment object", "success")
+      seuratObj <- convertSCEToSeurat(loaded_data, log_function = log_function)
     } else {
       seuratObj <- loaded_data
     }
   }
   if (!inherits(seuratObj, "Seurat")) {
-    log_function("File is not a valid Seurat object", "error")
-    stop("File is not a valid Seurat object")
+    log_function("File is not a valid Seurat or SingleCellExperiment object", "error")
+    stop("File is not a valid Seurat or SingleCellExperiment object")
   }
   log_function("✓ Valid Seurat object detected", "success")
   # Convert Seurat v4 Assay objects to v5 Assay5 if needed
@@ -585,6 +618,22 @@ loadSeuratObject <- function(rds_path, add_dataset_column = FALSE, dataset_name 
       seuratObj@misc$cluster_colors <- NULL
     }
   }
+  # Restore metadata columns from backup — covers all custom columns regardless of name
+  # (ClusterIdents, annotations, condition, etc.) not just Seurat defaults.
+  if (!is.null(seuratObj@misc$metadata_backup)) {
+    backup <- seuratObj@misc$metadata_backup
+    common_cells <- intersect(rownames(seuratObj@meta.data), rownames(backup))
+    if (length(common_cells) > 0) {
+      missing_cols <- setdiff(colnames(backup), colnames(seuratObj@meta.data))
+      if (length(missing_cols) > 0) {
+        seuratObj@meta.data[common_cells, missing_cols] <- backup[common_cells, missing_cols, drop = FALSE]
+        message(paste("Restored", length(missing_cols), "metadata column(s) from backup:",
+                      paste(missing_cols, collapse = ", ")))
+      } else {
+        message("Metadata backup found — all columns already present, nothing to restore")
+      }
+    }
+  }
   # Join multi-fragment layers (Seurat v5 only, Assay5 only)
   if (packageVersion("Seurat") >= "5.0.0") {
     log_function("Checking for layers to join...", "info")
@@ -634,8 +683,37 @@ loadSeuratObject <- function(rds_path, add_dataset_column = FALSE, dataset_name 
   }
   return(seuratObj)
 }
+get_umap_reduction <- function(seurat_obj) {
+  # Detect the best available UMAP reduction.
+  # Prefers "umap", then "wnn.umap" (multiome WNN), then any reduction containing "umap".
+  reductions <- names(seurat_obj@reductions)
+  if ("umap" %in% reductions) return("umap")
+  if ("wnn.umap" %in% reductions) return("wnn.umap")
+  umap_like <- reductions[grepl("umap", reductions, ignore.case = TRUE)]
+  if (length(umap_like) > 0) return(umap_like[1])
+  return(NULL)
+}
 
-generateInitialPlot <- function(seurat_obj, remove_axes = FALSE, remove_legend = FALSE) {
+materializeIdentsAsColumn <- function(seurat_obj, column_name = "ClusterIdents", log_function = message) {
+  # Copy active identities into a metadata column when they carry cluster names not stored in any existing column
+  stopifnot(inherits(seurat_obj, "Seurat"), is.character(column_name), length(column_name) == 1)
+  if (column_name %in% colnames(seurat_obj@meta.data)) return(seurat_obj)
+  idents_chr <- as.character(Idents(seurat_obj))
+  # Purely numeric identities are plain cluster numbers, already covered by seurat_clusters
+  if (all(grepl("^[0-9]+$", idents_chr))) return(seurat_obj)
+  # Skip if an existing column already holds exactly the same label for every cell
+  already_stored <- vapply(seurat_obj@meta.data, function(col) identical(as.character(col), idents_chr), logical(1))
+  if (any(already_stored)) {
+    log_function(paste("Identities already stored in:", paste(names(already_stored)[already_stored], collapse = ", ")), "info")
+    return(seurat_obj)
+  }
+  seurat_obj@meta.data[[column_name]] <- idents_chr
+  log_function(paste0("Stored active identities in '", column_name, "' (", length(unique(idents_chr)), " clusters)"), "success")
+  seurat_obj
+}
+
+
+generateInitialPlot <- function(seurat_obj, remove_axes = FALSE, remove_legend = FALSE,cluster_col = NULL) {
   # Generate initial clustering plot with color restoration
   # Args:
   #   seurat_obj: Seurat object
@@ -1135,70 +1213,59 @@ loadFromH5AD <- function(h5ad_path, dataset_type = "snRNA",
   return(seuratObj)
 }
 
-
-slimSeuratObject <- function(seurat_obj, keep_counts = TRUE, keep_scale_data = FALSE,
-                             log_function = message) {
-  # Reduce memory footprint by removing redundant assays and layers
-  # Keeps: RNA assay, all reductions, all graphs, full metadata
-  # Drops: extra assays (SCT, integrated), scale.data by default
+slimSeuratObject <- function(seurat_obj, keep_counts = TRUE, keep_scale_data = FALSE, level = "slim", log_function = message) {
+  # Reduce the memory footprint of a Seurat object, at two levels:
+  #   "slim" (safe): removes the scale.data layer of the RNA assay only. Nothing is lost: RNA scale.data is only used
+  #     by PCA and the application runs ScaleData before every PCA on RNA. Other assays are left untouched, because
+  #     their scale.data may be needed to re-run PCA (SCT residuals, integrated values)
+  #   "aggressive": also removes every assay other than RNA and the default assay (SCT, integrated, ADT...).
+  #     Batch-corrected (integrated) and SCT values are lost: re-running PCA or clustering then uses uncorrected RNA data
+  # Counts, normalized data, reductions, graphs, metadata and identities are always kept
+  # Layers are removed one by one with LayerData<- so that the result does not depend on the DietSeurat() version
   # Args:
   #   seurat_obj: Seurat object
-  #   keep_counts: Keep counts layer (needed for DEG, CellChat)
-  #   keep_scale_data: Keep scale.data layer (needed for heatmaps — can be recomputed)
+  #   keep_counts: Keep RNA counts layers (needed for DEG, pseudobulk, CellChat)
+  #   keep_scale_data: Keep the RNA scale.data layer
+  #   level: "slim" (safe) or "aggressive"; any other value (e.g. "full") returns the object unchanged
   #   log_function: Logging function
   # Returns:
   #   Slimmed Seurat object
+  if (!isTRUE(level %in% c("slim", "aggressive"))) return(seurat_obj)
   mem_before <- as.numeric(object.size(seurat_obj)) / 1024^2
-  # Determine which layers to keep
-  layers_to_keep <- "data"
-  if (keep_counts) layers_to_keep <- c(layers_to_keep, "counts")
-  if (keep_scale_data) layers_to_keep <- c(layers_to_keep, "scale.data")
-  # Determine which assays to keep: RNA + default assay (may differ after SCTransform)
   default_assay <- DefaultAssay(seurat_obj)
-  assays_to_keep <- unique(c("RNA", default_assay))
-  all_assays <- names(seurat_obj@assays)
-  dropped_assays <- setdiff(all_assays, assays_to_keep)
-  if (length(dropped_assays) > 0) {
-    log_function(paste("Dropping assays:", paste(dropped_assays, collapse = ", ")), "info")
+  if (level == "aggressive") {
+    assays_to_keep <- intersect(unique(c("RNA", default_assay)), names(seurat_obj@assays))
+    dropped_assays <- setdiff(names(seurat_obj@assays), assays_to_keep)
+    # Dropping SCT must never leave RNA without normalized data (SCT-normalized objects reloaded with RNA as default)
+    if (length(dropped_assays) > 0 && "RNA" %in% assays_to_keep && inherits(seurat_obj[["RNA"]], "Assay5") &&
+        !any(grepl("^data(\\.|$)", Layers(seurat_obj[["RNA"]])))) {
+      log_function("RNA assay has no normalized data: running LogNormalize before dropping the other assays", "warning")
+      seurat_obj <- NormalizeData(seurat_obj, assay = "RNA", verbose = FALSE)
+    }
+    for (assay in dropped_assays) seurat_obj[[assay]] <- NULL
+    if (length(dropped_assays) > 0) {
+      log_function(paste("Dropped assays:", paste(dropped_assays, collapse = ", "),
+                         "- batch-corrected / SCT values are no longer available for re-running PCA or clustering"), "warning")
+    }
   }
-  # Keep all existing reductions and graphs
-  existing_reductions <- names(seurat_obj@reductions)
-  existing_graphs <- names(seurat_obj@graphs)
-  # Check if all assays are v5 (Assay5) — DietSeurat layers param requires v5
-  all_v5 <- all(vapply(names(seurat_obj@assays), function(a) {
-    inherits(seurat_obj[[a]], "Assay5")
-  }, logical(1)))
-  if (all_v5) {
-    seurat_obj <- DietSeurat(
-      seurat_obj,
-      layers = layers_to_keep,
-      assays = intersect(assays_to_keep, all_assays),
-      dimreducs = existing_reductions,
-      graphs = existing_graphs
-    )
-  } else {
-    log_function("Seurat v4 assay detected — skipping layer-level optimization", "info")
-    seurat_obj <- DietSeurat(
-      seurat_obj,
-      assays = intersect(assays_to_keep, all_assays),
-      dimreducs = existing_reductions,
-      graphs = existing_graphs
-    )
+  # RNA layers to keep, split layers included (counts.dataset1, data.dataset1...)
+  if ("RNA" %in% names(seurat_obj@assays) && inherits(seurat_obj[["RNA"]], "Assay5")) {
+    keep_bases <- c("data", if (keep_counts) "counts", if (keep_scale_data) "scale.data")
+    keep_regex <- paste0("^(", paste(gsub(".", "\\.", keep_bases, fixed = TRUE), collapse = "|"), ")(\\.|$)")
+    layers <- Layers(seurat_obj[["RNA"]])
+    layers_rm <- layers[!grepl(keep_regex, layers)]
+    # Never remove the only expression values left (counts of an object that is not normalized yet)
+    if (!any(grepl("^data(\\.|$)", layers))) layers_rm <- layers_rm[!grepl("^counts(\\.|$)", layers_rm)]
+    for (lyr in layers_rm) LayerData(seurat_obj, assay = "RNA", layer = lyr) <- NULL
+    if (length(layers_rm) > 0) log_function(paste("Dropped RNA layers:", paste(layers_rm, collapse = ", ")), "info")
   }
-  # Ensure default assay is set correctly after Diet
-  if (default_assay %in% names(seurat_obj@assays)) {
-    DefaultAssay(seurat_obj) <- default_assay
-  } else {
-    DefaultAssay(seurat_obj) <- names(seurat_obj@assays)[1]
-  }
-  gc()
+  DefaultAssay(seurat_obj) <- if (default_assay %in% names(seurat_obj@assays)) default_assay else names(seurat_obj@assays)[1]
+  invisible(gc())
   mem_after <- as.numeric(object.size(seurat_obj)) / 1024^2
-  mem_saved <- mem_before - mem_after
-  log_function(paste0("Memory optimization: ", round(mem_before), " MB → ",
-                      round(mem_after), " MB (saved ", round(mem_saved), " MB)"), "success")
-  return(seurat_obj)
+  log_function(paste0("Memory optimization (", level, "): ", round(mem_before), " MB → ", round(mem_after),
+                      " MB (saved ", round(mem_before - mem_after), " MB)"), "success")
+  seurat_obj
 }
-
 logMemoryUsage <- function(log_function = message, seurat_obj = NULL, label = NULL) {
   # Log memory usage — works in Docker, local Linux, macOS, Windows
   # Uses only base R: gc(), file.exists(), readLines(), object.size()
@@ -1246,7 +1313,7 @@ logMemoryUsage <- function(log_function = message, seurat_obj = NULL, label = NU
         sum(c(length(assay@counts) > 0, length(assay@data) > 0, length(assay@scale.data) > 0))
       }
     }, integer(1)))
-
+    
     log_function(paste0(obj_label, ": ~", format(obj_mb, big.mark = ","), " MB (",
                         n_assays, " assay(s): ", assay_names, ", ",
                         n_layers, " layer(s) total)"), "info")

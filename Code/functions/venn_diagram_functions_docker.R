@@ -1,4 +1,4 @@
-# venn_diagram_functions_newarch.R
+# venn_diagram_functions.R
 
 safeIntersect <- function(x, y) {
   # Safe intersection function
@@ -102,17 +102,30 @@ calculateOverlaps <- function(gene_lists, list_names, gene_directions = NULL) {
   return(all_combinations)
 }
 
-cleanGeneNamesForHtml <- function(genes) {
-  # Clean gene names for HTML display
-  cleaned <- gsub("[^a-zA-Z0-9_.-]", "_", genes)
-  return(cleaned)
-}
-
 storeDETable <- function(table_storage, table_data, table_name, description, type, parameters) {
-  # Store differential expression table for Venn diagram analysis
+  # Store differential expression table for Venn diagrams, volcano plots and enrichment.
+  # Gene names are kept both as row names (read by filterGeneList and the volcano plot) and in a 'gene' column:
+  # some tables (exclusive biomarkers) arrive with row numbers as row names and the genes in a 'gene' column.
   if (is.null(table_data) || nrow(table_data) == 0) {
     showNotification("Cannot store an empty table.", type = "warning")
-    return(list(success = FALSE, storage = table_storage))
+    return(list(success = FALSE, storage = table_storage, message = "Cannot store an empty table."))
+  }
+  table_data <- as.data.frame(table_data)
+  if ("gene" %in% colnames(table_data)) {
+    genes <- as.character(table_data$gene)
+    if (anyNA(genes) || any(genes == "") || anyDuplicated(genes) > 0) {
+      msg <- "The 'gene' column has missing or duplicated values: table not stored."
+      showNotification(msg, type = "warning")
+      return(list(success = FALSE, storage = table_storage, message = msg))
+    }
+    rownames(table_data) <- genes
+  } else {
+    if (all(grepl("^[0-9]+$", rownames(table_data)))) {
+      msg <- "The table has no gene names (no 'gene' column and numeric row names): table not stored."
+      showNotification(msg, type = "warning")
+      return(list(success = FALSE, storage = table_storage, message = msg))
+    }
+    table_data$gene <- rownames(table_data)
   }
   
   # Create entry for storage
@@ -130,44 +143,27 @@ storeDETable <- function(table_storage, table_data, table_name, description, typ
   current_tables <- table_storage
   current_tables[[table_name]] <- table_entry
   
-  showNotification(paste0("Stored ", nrow(table_data), " genes in '", description, "'"), type = "message")
-  return(list(success = TRUE, storage = current_tables))
+  msg <- paste0("Stored ", nrow(table_data), " genes in '", description, "'")
+  showNotification(msg, type = "message")
+  return(list(success = TRUE, storage = current_tables, message = msg))
 }
 
 filterGeneList <- function(table_storage, table_name, significant_only, log_fc_threshold, p_val_threshold, use_adjusted_p, direction) {
-  # Filter gene list based on user parameters
-  if (table_name == "" || is.null(table_storage[[table_name]])) {
-    return(character(0))
-  }
-  
-  # Get the gene table
+  # Genes of a stored table passing the user filters. Rows are selected with which(): a logical index containing NA
+  # (missing p-value or fold change) would otherwise add rows named "NA", "NA.1", ... that end up in the Venn lists
+  if (is.null(table_name) || table_name == "" || is.null(table_storage[[table_name]])) return(character(0))
   gene_table <- table_storage[[table_name]]$data
-  
-  # Convert scientifically formatted p-values back to numeric
-  gene_table$p_val <- as.numeric(gene_table$p_val)
-  gene_table$p_val_adj <- as.numeric(gene_table$p_val_adj)
-  
-  # Select genes based on significance
-  if (significant_only) {
-    p_val_col <- if (use_adjusted_p) "p_val_adj" else "p_val"
-    gene_table <- gene_table[gene_table[[p_val_col]] < p_val_threshold, ]
+  p_val <- suppressWarnings(as.numeric(gene_table$p_val))
+  p_val_adj <- suppressWarnings(as.numeric(gene_table$p_val_adj))
+  log_fc <- suppressWarnings(as.numeric(gene_table$avg_log2FC))
+  keep <- !is.na(log_fc)
+  # Significance filter: genes without a p-value (e.g. exclusive markers found without a test) are not significant
+  if (isTRUE(significant_only)) {
+    p <- if (isTRUE(use_adjusted_p)) p_val_adj else p_val
+    keep <- keep & !is.na(p) & p < p_val_threshold
   }
-  
-  # Select genes based on fold change direction
-  if (direction == "up") {
-    gene_table <- gene_table[gene_table$avg_log2FC > log_fc_threshold, ]
-  } else if (direction == "down") {
-    gene_table <- gene_table[gene_table$avg_log2FC < -log_fc_threshold, ]
-  } else { # "both"
-    gene_table <- gene_table[abs(gene_table$avg_log2FC) > log_fc_threshold, ]
-  }
-  
-  # Return gene names
-  if (nrow(gene_table) > 0) {
-    return(rownames(gene_table))
-  } else {
-    return(character(0))
-  }
+  keep <- keep & switch(direction, up = log_fc > log_fc_threshold, down = log_fc < -log_fc_threshold, abs(log_fc) > log_fc_threshold)
+  return(rownames(gene_table)[which(keep)])
 }
 
 generateVennDiagram <- function(gene_lists, list_names, colors = c("#FF6B6B", "#4ECDC4", "#45B7D1")) {
@@ -241,72 +237,33 @@ updateVennSelectInputs <- function(session, table_storage, input_ids) {
 processVennGeneration <- function(table_storage, selected_tables, filter_params, colors) {
   # Process complete Venn diagram generation
   tryCatch({
-    # Validate inputs
-    selected_tables <- selected_tables[selected_tables != ""]
-    if (length(selected_tables) < 2) {
-      return(list(success = FALSE, message = "Please select at least 2 gene lists for comparison"))
-    }
-    
-    # Filter gene lists based on user parameters
+    selected_tables <- selected_tables[!is.na(selected_tables) & selected_tables != ""]
+    if (length(selected_tables) < 2) return(list(success = FALSE, message = "Please select at least 2 gene lists for comparison"))
+    missing_tables <- selected_tables[!selected_tables %in% names(table_storage)]
+    if (length(missing_tables) > 0) return(list(success = FALSE, message = paste("Stored table not found (deleted?):", paste(missing_tables, collapse = ", "))))
+    # Labels made unique: two runs of the same comparison share a description, and a duplicated label made one set overwrite the other
+    descriptions <- vapply(selected_tables, function(tn) { d <- table_storage[[tn]]$description; if (is.null(d) || !nzchar(d)) tn else as.character(d) }, character(1))
+    list_names <- make.unique(unname(descriptions), sep = " #")
     gene_lists <- list()
-    list_names <- character(length(selected_tables))
-    gene_directions <- list()  # Store direction info
-    
-    for (i in 1:length(selected_tables)) {
+    gene_directions <- list()
+    venn_lists <- list()
+    for (i in seq_along(selected_tables)) {
       table_name <- selected_tables[i]
-      
-      # Get filtered genes
-      gene_lists[[i]] <- filterGeneList(
-        table_storage, 
-        table_name,
-        filter_params$significant_only[[i]],
-        filter_params$log_fc_threshold[[i]],
-        filter_params$p_val_threshold,
-        filter_params$use_adjusted_p,
-        filter_params$direction
-      )
-      
-      list_names[i] <- table_storage[[table_name]]$description
-      
-      # CRITICAL: Store direction for each gene
+      gene_lists[[i]] <- filterGeneList(table_storage, table_name, filter_params$significant_only[[i]], filter_params$log_fc_threshold[[i]],
+                                        filter_params$p_val_threshold, filter_params$use_adjusted_p, filter_params$direction)
       gene_table <- table_storage[[table_name]]$data
-      gene_table_subset <- gene_table[rownames(gene_table) %in% gene_lists[[i]], ]
-      
-      gene_directions[[list_names[i]]] <- data.frame(
-        gene = rownames(gene_table_subset),
-        direction = ifelse(gene_table_subset$avg_log2FC > 0, "+", "-"),
-        stringsAsFactors = FALSE
-      )
+      fc <- suppressWarnings(as.numeric(gene_table$avg_log2FC[match(gene_lists[[i]], rownames(gene_table))]))
+      direction <- ifelse(fc > 0, "+", "-")
+      gene_directions[[list_names[i]]] <- data.frame(gene = gene_lists[[i]], direction = direction, stringsAsFactors = FALSE)
+      # Diagram drawn on gene|direction tokens so its intersection counts match the direction-consistent lists of the table
+      venn_lists[[i]] <- paste(gene_lists[[i]], direction, sep = "|")
+      message(sprintf("[Venn] %s: %d genes (up %d, down %d)", list_names[i], length(gene_lists[[i]]), sum(direction == "+"), sum(direction == "-")))
     }
-    
-    # DEBUG: Print gene counts
-    message("=== VENN DIAGRAM DEBUG ===")
-    for (i in 1:length(gene_lists)) {
-      message(paste(list_names[i], ":", length(gene_lists[[i]]), "genes"))
-      if (!is.null(gene_directions[[list_names[i]]])) {
-        n_up <- sum(gene_directions[[list_names[i]]]$direction == "+")
-        n_down <- sum(gene_directions[[list_names[i]]]$direction == "-")
-        message(paste("  UP:", n_up, ", DOWN:", n_down))
-      }
-    }
-    
-    # Calculate total unique genes
-    all_genes <- unique(unlist(gene_lists))
-    
     # Calculate all overlaps with direction checking
     overlaps <- calculateOverlaps(gene_lists, list_names, gene_directions)
-    
-    # Generate Venn diagram object
-    venn_obj <- generateVennDiagram(gene_lists, list_names, colors)
-    
-    return(list(
-      success = TRUE,
-      venn_plot = venn_obj,
-      overlaps = overlaps,
-      list_names = list_names
-    ))
-    
+    venn_obj <- generateVennDiagram(venn_lists, list_names, colors)
+    return(list(success = TRUE, venn_plot = venn_obj, overlaps = overlaps, list_names = list_names))
   }, error = function(e) {
-    return(list(success = FALSE, message = paste("Error generating Venn diagram:", e$message)))
+    return(list(success = FALSE, message = paste("Error generating Venn diagram:", conditionMessage(e)[1])))
   })
 }

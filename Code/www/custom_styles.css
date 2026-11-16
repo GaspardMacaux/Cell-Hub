@@ -2678,26 +2678,3 @@ div[style*="background: white"] .checkbox label {
   color: #999;
   font-style: italic;
 }
-
-/* Fix AdminLTE clipping for large dynamic plots */
-html, body {
-  height: auto !important;
-  overflow-y: auto !important;
-}
-
-.wrapper {
-  height: auto !important;
-  overflow: visible !important;
-}
-
-.content-wrapper, .right-side {
-  margin-top: 0px !important;
-  overflow-y: visible !important;
-  height: auto !important;
-  min-height: 100vh !important;
-}
-
-.tab-content, .tab-pane {
-  overflow: visible !important;
-  height: auto !important;
-}

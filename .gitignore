@@ -3,3 +3,7 @@
 ._*
 .AppleDouble
 .LSOverride
+cellhub_demo_data/
+*.rds
+.Rhistory
+.RData

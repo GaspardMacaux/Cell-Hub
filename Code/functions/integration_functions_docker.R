@@ -1,4 +1,4 @@
-# integration_functions_newarch.R
+# integration_functions.R
 
 
 ############################## Seurat v5 Layer Management ##############################
@@ -8,79 +8,86 @@ prepareSeuratV5ForIntegration <- function(seurat_object) {
   # Args:
   #   seurat_object: Seurat object to prepare
   # Returns:
-  #   Prepared Seurat object with proper layer structure
-  
+  #   Prepared Seurat object with joined RNA layers, a counts layer and a log-normalized data layer
   if (packageVersion("Seurat") >= "5.0.0") {
     message("Preparing Seurat v5 object for integration...")
-    
     tryCatch({
-      # Join layers in RNA assay if multiple layers exist
       if ("RNA" %in% names(seurat_object@assays)) {
         rna_layers <- names(seurat_object[["RNA"]]@layers)
         if (length(rna_layers) > 1) {
           message(paste("Found", length(rna_layers), "RNA layers, joining..."))
           seurat_object[["RNA"]] <- JoinLayers(seurat_object[["RNA"]])
         }
-      }
-      
-      # Ensure proper layer structure
-      if ("RNA" %in% names(seurat_object@assays)) {
         existing <- names(seurat_object[["RNA"]]@layers)
         # Fallback counts from data only — never from scale.data or unknown layer order
         if (!"counts" %in% existing && "data" %in% existing) {
           message("Adding counts layer from data...")
           seurat_object[["RNA"]]@layers$counts <- seurat_object[["RNA"]]@layers[["data"]]
         }
-        # Fallback data from counts only — never from scale.data or unknown layer order
+        # A missing data layer is computed by log-normalization (copying raw counts would make every downstream
+        # expression value, average and test read raw counts)
         if (!"data" %in% existing && "counts" %in% existing) {
-          message("Adding data layer from counts...")
-          seurat_object[["RNA"]]@layers$data <- seurat_object[["RNA"]]@layers[["counts"]]
+          message("Adding data layer (LogNormalize of the counts)...")
+          seurat_object <- NormalizeData(seurat_object, assay = "RNA", normalization.method = "LogNormalize", scale.factor = 10000, verbose = FALSE)
         }
       }
-      
       message("Seurat v5 object prepared successfully")
-      
     }, error = function(e) {
       message(paste("Warning: Could not prepare Seurat v5 object:", e$message))
     })
   }
-  
   return(seurat_object)
 }
 
 cleanIntegratedSeuratV5 <- function(seurat_object) {
-  # Clean integrated Seurat v5 object to resolve layer issues
-  # Args:
-  #   seurat_object: Integrated Seurat object
-  # Returns:
-  #   Cleaned Seurat object
-  
-  if (packageVersion("Seurat") >= "5.0.0") {
-    message("Cleaning integrated Seurat v5 object...")
-    
-    tryCatch({
-      # Join layers in all assays
-      for (assay_name in names(seurat_object@assays)) {
-        assay_layers <- names(seurat_object[[assay_name]]@layers)
-        if (length(assay_layers) > 1) {
-          message(paste("Joining layers in", assay_name, "assay"))
-          seurat_object[[assay_name]] <- JoinLayers(seurat_object[[assay_name]])
-        }
-      }
-      
-      message("Seurat v5 object cleaned successfully")
-      
-    }, error = function(e) {
-      message(paste("Warning: Could not clean Seurat v5 object:", e$message))
-    })
+  # Join split layers of every Seurat v5 (Assay5) assay after integration; v3 assays (e.g. "integrated") and SCT assays have no layers to join
+  for (assay_name in names(seurat_object@assays)) {
+    if (!inherits(seurat_object[[assay_name]], "Assay5")) next
+    if (length(SeuratObject::Layers(seurat_object[[assay_name]])) > 1) {
+      message(paste("Joining layers in", assay_name, "assay"))
+      seurat_object[[assay_name]] <- SeuratObject::JoinLayers(seurat_object[[assay_name]])
+    }
   }
-  
   return(seurat_object)
 }
 
+# Normalization, variable features and PCA of one raw dataset before integration (SCTransform or Seurat NormalizeData methods)
+normalizeDatasetForIntegration <- function(seurat_object, normalization_method = "LogNormalize", log_function = message) {
+  log_function("Normalizing and preprocessing...", "info")
+  if (normalization_method == "SCTransform") {
+    log_function("Using SCTransform for normalization", "info")
+    seurat_object <- SCTransform(seurat_object, variable.features.n = 4000, verbose = FALSE)
+    log_function("SCTransform completed", "success")
+    DefaultAssay(seurat_object) <- "SCT"
+    seurat_object <- runPCA_reproducible(seurat_object, npcs = 50, seed = 42, features = VariableFeatures(seurat_object), verbose = FALSE)
+    log_function(paste("Variable features found:", length(VariableFeatures(seurat_object))), "info")
+    log_function(paste("Default assay set to:", DefaultAssay(seurat_object)), "info")
+  } else {
+    log_function(paste0("Using ", normalization_method, " for normalization"), "info")
+    seurat_object <- NormalizeData(seurat_object, normalization.method = normalization_method, verbose = FALSE)
+    seurat_object <- FindVariableFeatures(seurat_object, selection.method = "vst", nfeatures = 4000, verbose = FALSE)
+    # Variable features only (they are the only ones used by the PCA)
+    seurat_object <- ScaleData(seurat_object, features = VariableFeatures(seurat_object), verbose = FALSE)
+    seurat_object <- runPCA_reproducible(seurat_object, npcs = 50, seed = 42, features = VariableFeatures(seurat_object), verbose = FALSE)
+    DefaultAssay(seurat_object) <- "RNA"
+    log_function(paste("Variable features found:", length(VariableFeatures(seurat_object))), "info")
+  }
+  log_function("Preprocessing completed", "success")
+  return(seurat_object)
+}
 
+# Gene Expression counts of a 10x matrix read by Read10X / Read10X_h5, which return a list when the file holds
+# several feature types (Multiome peaks, antibody capture, CRISPR guides); the other modalities are not integrated
+extract_gene_expression_counts <- function(data_10x, log_function = message) {
+  if (!is.list(data_10x)) return(data_10x)
+  if (!"Gene Expression" %in% names(data_10x)) {
+    stop(paste("No Gene Expression matrix found. Feature types in the file:", paste(names(data_10x), collapse = ", ")))
+  }
+  other_types <- setdiff(names(data_10x), "Gene Expression")
+  if (length(other_types) > 0) log_function(paste("Using the Gene Expression matrix; not loaded:", paste(other_types, collapse = ", ")), "info")
+  data_10x[["Gene Expression"]]
+}
 
-############################## Data Preprocessing Functions ##############################
 
 preprocessRawDataset <- function(file_path, dataset_type, species,
                                  dataset_name, qc_params,
@@ -88,7 +95,7 @@ preprocessRawDataset <- function(file_path, dataset_type, species,
                                  log_function = message) {
   # Preprocess a single raw dataset for integration
   # Args:
-  #   file_path: Path to the uploaded file (ZIP, H5AD, or RDS)
+  #   file_path: Path to the uploaded file (ZIP, H5, H5AD, or RDS)
   #   dataset_type: "snRNA_merge", "multiome_merge", or "seurat_object_merge"
   #   species: Species for mitochondrial pattern
   #   dataset_name: Name for the dataset
@@ -110,6 +117,7 @@ preprocessRawDataset <- function(file_path, dataset_type, species,
   log_function(paste("  - Max MT%:", qc_params$max_mt_percent_merge), "info")
   log_function(paste("  - Normalization method:", normalization_method), "info")
   seurat_object <- NULL
+  temp_dir <- NULL
   file_extension <- tolower(tools::file_ext(file_path))
   tryCatch({
     if (dataset_type == "seurat_object_merge") {
@@ -167,111 +175,67 @@ preprocessRawDataset <- function(file_path, dataset_type, species,
         }
       }
       seurat_object@project.name <- dataset_name
-      cells_before <- ncol(seurat_object)
-      genes_before <- nrow(seurat_object)
-      log_function(paste("Cells loaded:", format(cells_before, big.mark = ",")), "info")
-      log_function(paste("Genes:", format(genes_before, big.mark = ",")), "info")
+      log_function(paste("Cells loaded:", format(ncol(seurat_object), big.mark = ",")), "info")
+      log_function(paste("Genes:", format(nrow(seurat_object), big.mark = ",")), "info")
       seurat_object@meta.data$integration_group <- dataset_name
-      # Normalization + variable features + scaling + PCA
-      log_function("Normalizing and preprocessing...", "info")
-      if (normalization_method == "SCTransform") {
-        log_function("Using SCTransform for normalization", "info")
-        seurat_object <- SCTransform(seurat_object, variable.features.n = 4000, verbose = FALSE)
-        log_function("SCTransform completed", "success")
-        DefaultAssay(seurat_object) <- "SCT"
-        seurat_object <- RunPCA(seurat_object, features = VariableFeatures(seurat_object),
-                                npcs = 50, verbose = FALSE)
-        log_function(paste("Variable features found:", length(VariableFeatures(seurat_object))), "info")
-        log_function(paste("Default assay set to:", DefaultAssay(seurat_object)), "info")
-      } else {
-        log_function(paste0("Using ", normalization_method, " for normalization"), "info")
-        seurat_object <- NormalizeData(seurat_object, normalization.method = normalization_method,
-                                       verbose = FALSE)
-        seurat_object <- FindVariableFeatures(seurat_object, selection.method = "vst",
-                                              nfeatures = 4000, verbose = FALSE)
-        seurat_object <- ScaleData(seurat_object, features = rownames(seurat_object), verbose = FALSE)
-        seurat_object <- RunPCA(seurat_object, features = VariableFeatures(seurat_object),
-                                verbose = FALSE)
-        DefaultAssay(seurat_object) <- "RNA"
-        log_function(paste("Variable features found:", length(VariableFeatures(seurat_object))), "info")
-      }
-      log_function("Preprocessing completed", "success")
-    } else {
-      # Raw 10X ZIP path (existing logic)
-      log_function("Processing raw 10X data from ZIP", "info")
-      temp_dir <- createTempDirectory(paste0("dataset_", dataset_name))
-      log_function("Extracting ZIP file...", "info")
-      unzip(file_path, exdir = temp_dir)
-      log_function("Searching for 10X files in extracted directory...", "info")
-      valid_folder <- find10XFolder(temp_dir)
-      if (is.null(valid_folder)) {
-        stop("No complete set of 10X files found in ZIP. Please ensure the ZIP contains barcodes.tsv.gz, features.tsv.gz, and matrix.mtx.gz files.")
-      }
-      log_function(paste("Found 10X files in:", valid_folder), "info")
-      log_function("Reading 10X data...", "info")
-      data_10x <- Read10X(valid_folder)
-      if (is.list(data_10x) && "Gene Expression" %in% names(data_10x)) {
-        cells_before <- ncol(data_10x$`Gene Expression`)
-        genes_before <- nrow(data_10x$`Gene Expression`)
-      } else {
-        cells_before <- ncol(data_10x)
-        genes_before <- nrow(data_10x)
-      }
-      log_function(paste("Raw matrix dimensions:", format(genes_before, big.mark = ","),
-                         "genes x", format(cells_before, big.mark = ","), "barcodes"), "info")
-      log_function("Creating Seurat object with initial filtering...", "info")
-      if (dataset_type == "snRNA_merge") {
-        seurat_object <- CreateSeuratObject(counts = data_10x, project = dataset_name,
-                                            min.cells = 3, min.features = qc_params$min_features_merge)
-      } else if (dataset_type == "multiome_merge") {
-        if (is.list(data_10x) && "Gene Expression" %in% names(data_10x)) {
-          log_function("Extracting Gene Expression assay from multiome data", "info")
-          seurat_object <- CreateSeuratObject(counts = data_10x$`Gene Expression`, project = dataset_name,
-                                              min.cells = 3, min.features = qc_params$min_features_merge)
-        } else {
-          stop("Could not find Gene Expression data in multiome file")
+      seurat_object <- normalizeDatasetForIntegration(seurat_object, normalization_method, log_function)
+    } else if (file_extension %in% c("zip", "h5", "hdf5")) {
+      # Raw 10X data: Cell Ranger matrix folder in a ZIP, or Cell Ranger HDF5 file (filtered_feature_bc_matrix.h5)
+      if (file_extension == "zip") {
+        log_function("Processing raw 10X data from ZIP", "info")
+        temp_dir <- createTempDirectory(paste0("dataset_", dataset_name))
+        log_function("Extracting ZIP file...", "info")
+        unzip(file_path, exdir = temp_dir)
+        log_function("Searching for 10X files in extracted directory...", "info")
+        valid_folder <- find10XFolder(temp_dir)
+        if (is.null(valid_folder)) {
+          stop("No complete set of 10X files found in ZIP. Please ensure the ZIP contains barcodes.tsv.gz, features.tsv.gz, and matrix.mtx.gz files.")
         }
-      }
-      log_function(paste("Cells after initial filtering:", format(ncol(seurat_object), big.mark = ",")), "info")
-      unlink(temp_dir, recursive = TRUE)
-      seurat_object@meta.data$integration_group <- dataset_name
-      # Normalization + variable features + scaling + PCA
-      log_function("Normalizing and preprocessing...", "info")
-      if (normalization_method == "SCTransform") {
-        log_function("Using SCTransform for normalization", "info")
-        seurat_object <- SCTransform(seurat_object, variable.features.n = 4000, verbose = FALSE)
-        log_function("SCTransform completed", "success")
-        DefaultAssay(seurat_object) <- "SCT"
-        seurat_object <- RunPCA(seurat_object, features = VariableFeatures(seurat_object),
-                                npcs = 50, verbose = FALSE)
-        log_function(paste("Variable features found:", length(VariableFeatures(seurat_object))), "info")
-        log_function(paste("Default assay set to:", DefaultAssay(seurat_object)), "info")
+        log_function(paste("Found 10X files in:", valid_folder), "info")
+        log_function("Reading 10X data...", "info")
+        data_10x <- Read10X(valid_folder)
       } else {
-        log_function(paste0("Using ", normalization_method, " for normalization"), "info")
-        seurat_object <- NormalizeData(seurat_object, normalization.method = normalization_method,
-                                       verbose = FALSE)
-        seurat_object <- FindVariableFeatures(seurat_object, selection.method = "vst",
-                                              nfeatures = 4000, verbose = FALSE)
-        seurat_object <- ScaleData(seurat_object, features = rownames(seurat_object), verbose = FALSE)
-        seurat_object <- RunPCA(seurat_object, features = VariableFeatures(seurat_object),
-                                verbose = FALSE)
-        DefaultAssay(seurat_object) <- "RNA"
-        log_function(paste("Variable features found:", length(VariableFeatures(seurat_object))), "info")
+        log_function("Processing raw 10X data from HDF5 (.h5)", "info")
+        # hdf5r errors are long API traces: the user gets the expected format instead
+        data_10x <- tryCatch(Read10X_h5(file_path), error = function(e) {
+          message("Read10X_h5 error: ", conditionMessage(e)[1])
+          stop("Could not read the file as a 10X Cell Ranger HDF5 matrix (e.g. filtered_feature_bc_matrix.h5). An AnnData file must have the .h5ad extension.")
+        })
       }
-      log_function("Preprocessing completed", "success")
+      if (dataset_type == "multiome_merge" && !(is.list(data_10x) && "Gene Expression" %in% names(data_10x))) {
+        log_function("Multiome type selected but the file holds a single matrix: loaded as gene expression", "warning")
+      }
+      counts <- extract_gene_expression_counts(data_10x, log_function)
+      rm(data_10x)
+      log_function(paste("Raw matrix dimensions:", format(nrow(counts), big.mark = ","),
+                         "genes x", format(ncol(counts), big.mark = ","), "barcodes"), "info")
+      # An unfiltered matrix (raw_feature_bc_matrix) mostly holds empty droplets, removed here by min.features
+      if (ncol(counts) > 500000) log_function("Unfiltered matrix detected (> 500,000 barcodes): the filtered_feature_bc_matrix is recommended", "warning")
+      log_function("Creating Seurat object with initial filtering...", "info")
+      seurat_object <- CreateSeuratObject(counts = counts, project = dataset_name,
+                                          min.cells = 3, min.features = qc_params$min_features_merge)
+      rm(counts)
+      log_function(paste("Cells after initial filtering:", format(ncol(seurat_object), big.mark = ",")), "info")
+      if (!is.null(temp_dir)) unlink(temp_dir, recursive = TRUE)
+      seurat_object@meta.data$integration_group <- dataset_name
+      seurat_object <- normalizeDatasetForIntegration(seurat_object, normalization_method, log_function)
+    } else {
+      stop(paste0("Unsupported file format '.", file_extension, "' for raw data. Provide a ZIP (10X folder), H5 (Cell Ranger) or H5AD file."))
     }
+    # Pre-processed objects keep their 'dataset' column (original samples); raw files get the dataset name
     seurat_object <- applyQCAndPreprocessing(
       seurat_object = seurat_object,
       mt_pattern = mt_pattern,
       qc_params = qc_params,
       dataset_name = dataset_name,
       is_preprocessed = TRUE,
+      keep_dataset_column = (dataset_type == "seurat_object_merge"),
       log_function = log_function
     )
     log_function(paste("Dataset", dataset_name, "preprocessing completed successfully"), "success")
     return(seurat_object)
   }, error = function(e) {
-    if (exists("temp_dir") && dir.exists(temp_dir)) {
+    if (!is.null(temp_dir) && dir.exists(temp_dir)) {
       unlink(temp_dir, recursive = TRUE)
     }
     log_function(paste("Error preprocessing dataset:", conditionMessage(e)[1]), "error")
@@ -279,8 +243,9 @@ preprocessRawDataset <- function(file_path, dataset_type, species,
   })
 }
 
-applyQCAndPreprocessing <- function(seurat_object, mt_pattern, qc_params, 
+applyQCAndPreprocessing <- function(seurat_object, mt_pattern, qc_params,
                                     dataset_name, is_preprocessed = FALSE,
+                                    keep_dataset_column = FALSE,
                                     log_function = message) {
   # Apply QC filtering and standard preprocessing steps with v5 compatibility
   # Args:
@@ -288,95 +253,63 @@ applyQCAndPreprocessing <- function(seurat_object, mt_pattern, qc_params,
   #   mt_pattern: Mitochondrial gene pattern
   #   qc_params: List with min_features_merge, max_features_merge, max_mt_percent_merge
   #   dataset_name: Dataset identifier
-  #   is_preprocessed: Whether object is already processed
+  #   is_preprocessed: TRUE = QC filter only (normalization done elsewhere)
+  #   keep_dataset_column: keep an existing 'dataset' column (pre-processed objects with several original samples)
   #   log_function: Function for logging
   # Returns:
-  #   QC-filtered and preprocessed Seurat object
-  
+  #   QC-filtered (and, if requested, preprocessed) Seurat object
   log_function("Applying QC and preprocessing steps", "info")
-  
-  # Prepare for Seurat v5 if needed
   seurat_object <- prepareSeuratV5ForIntegration(seurat_object)
-  
-  # Add mitochondrial percentage if not present
   if (!"percent.mt" %in% colnames(seurat_object@meta.data)) {
     log_function("Calculating mitochondrial percentage...", "info")
     seurat_object[["percent.mt"]] <- PercentageFeatureSet(seurat_object, pattern = mt_pattern)
   }
-  
-  # Log pre-filter statistics
   pre_filter_cells <- ncol(seurat_object)
   log_function(paste("Pre-QC cell count:", format(pre_filter_cells, big.mark = ",")), "info")
-  
-  # Apply QC filters using UI parameters
+  # QC filters from the UI parameters (same rule as the single-dataset module: qc_pass_cells)
   log_function("Applying QC filters...", "info")
-  seurat_object <- subset(seurat_object,
-                          subset = nFeature_RNA > qc_params$min_features_merge &
-                            nFeature_RNA < qc_params$max_features_merge &
-                            percent.mt < qc_params$max_mt_percent_merge)
-  
+  md <- seurat_object@meta.data
+  qc_before <- list(median_genes = round(stats::median(md$nFeature_RNA, na.rm = TRUE)), median_counts = round(stats::median(md$nCount_RNA, na.rm = TRUE)),
+                    median_mt = round(stats::median(md$percent.mt, na.rm = TRUE), 2))
+  keep <- qc_pass_cells(md, qc_params$min_features_merge, qc_params$max_features_merge, qc_params$max_mt_percent_merge)
+  if (!any(keep)) stop(paste("No cells remain after QC filtering for dataset", dataset_name, "- consider relaxing QC parameters"))
+  seurat_object <- subset(seurat_object, cells = colnames(seurat_object)[keep])
   post_filter_cells <- ncol(seurat_object)
-  pct_retained <- round(post_filter_cells/pre_filter_cells * 100, 2)
-  
   log_function(paste("Post-QC cell count:", format(post_filter_cells, big.mark = ",")), "success")
-  log_function(paste("Retained:", pct_retained, "% of cells"), "success")
+  log_function(paste("Retained:", round(post_filter_cells / pre_filter_cells * 100, 2), "% of cells"), "success")
   log_function(paste("Removed:", format(pre_filter_cells - post_filter_cells, big.mark = ","), "cells"), "info")
-  
-  # Validate that cells remain after filtering
-  if (post_filter_cells == 0) {
-    log_function("ERROR: No cells remain after QC filtering!", "error")
-    log_function("Consider relaxing QC parameters", "warning")
-    stop(paste("No cells remain after QC filtering for dataset", dataset_name, 
-               "- consider relaxing QC parameters"))
-  }
-  
-  # Apply standard preprocessing if not already done
   if (!is_preprocessed) {
     log_function("Applying normalization, scaling, and PCA", "info")
-    
-    # Use layer-aware functions for Seurat v5
     log_function("  - Normalizing data...", "info")
     seurat_object <- NormalizeData(seurat_object, verbose = FALSE)
-    
     log_function("  - Finding variable features...", "info")
-    seurat_object <- FindVariableFeatures(seurat_object,
-                                          selection.method = "vst",
-                                          nfeatures = 4000,
-                                          verbose = FALSE)
-    
+    seurat_object <- FindVariableFeatures(seurat_object, selection.method = "vst", nfeatures = 4000, verbose = FALSE)
     log_function("  - Scaling data...", "info")
-    seurat_object <- ScaleData(seurat_object,
-                               features = rownames(seurat_object),
-                               verbose = FALSE)
-    
+    seurat_object <- ScaleData(seurat_object, features = VariableFeatures(seurat_object), verbose = FALSE)
     log_function("  - Running PCA...", "info")
-    seurat_object <- RunPCA(seurat_object,
-                            features = VariableFeatures(seurat_object),
-                            verbose = FALSE)
-    
+    seurat_object <- runPCA_reproducible(seurat_object, npcs = 50, seed = 42, features = VariableFeatures(seurat_object), verbose = FALSE)
     log_function("Preprocessing completed", "success")
   } else {
     log_function("Object already preprocessed, skipping normalization steps", "info")
   }
-  
-  # Add dataset metadata
-  seurat_object$dataset <- dataset_name
-  seurat_object$orig.ident <- dataset_name
-  
-  # Log final QC metrics
-  if ("nFeature_RNA" %in% colnames(seurat_object@meta.data)) {
-    log_function(paste("Median features/cell:", round(median(seurat_object$nFeature_RNA))), "info")
+  # Dataset metadata: pre-processed objects keep their 'dataset' and 'orig.ident' columns (one value per original sample)
+  if (keep_dataset_column && "dataset" %in% colnames(seurat_object@meta.data)) {
+    samples <- unique(as.character(seurat_object$dataset))
+    log_function(paste("Original samples kept in 'dataset':", paste(utils::head(samples, 10), collapse = ", "), if (length(samples) > 10) "..." else ""), "info")
+  } else {
+    seurat_object$dataset <- dataset_name
+    seurat_object$orig.ident <- dataset_name
   }
-  if ("nCount_RNA" %in% colnames(seurat_object@meta.data)) {
-    log_function(paste("Median UMI/cell:", round(median(seurat_object$nCount_RNA))), "info")
-  }
-  if ("percent.mt" %in% colnames(seurat_object@meta.data)) {
-    log_function(paste("Median MT%:", round(median(seurat_object$percent.mt), 2), "%"), "info")
-  }
-  
+  # Thresholds and statistics of this QC run, read by build_merge_qc_stats() before the datasets are merged (merge() drops @misc)
+  seurat_object@misc$qc_params <- list(min_features = qc_params$min_features_merge, max_features = qc_params$max_features_merge,
+                                       max_mt_percent = qc_params$max_mt_percent_merge, n_before = pre_filter_cells, n_after = post_filter_cells,
+                                       median_genes_before = qc_before$median_genes, median_counts_before = qc_before$median_counts,
+                                       median_mt_before = qc_before$median_mt)
+  if ("nFeature_RNA" %in% colnames(seurat_object@meta.data)) log_function(paste("Median features/cell:", round(median(seurat_object$nFeature_RNA))), "info")
+  if ("nCount_RNA" %in% colnames(seurat_object@meta.data)) log_function(paste("Median UMI/cell:", round(median(seurat_object$nCount_RNA))), "info")
+  if ("percent.mt" %in% colnames(seurat_object@meta.data)) log_function(paste("Median MT%:", round(median(seurat_object$percent.mt), 2), "%"), "info")
   return(seurat_object)
 }
-
 ############################## Batch Processing Function ##############################
 
 processDatasetsForIntegration <- function(file_inputs, dataset_types, dataset_names, 
@@ -519,6 +452,14 @@ performStandardIntegration <- function(seurat_list) {
     anchor.features = features
   )
   
+  # IntegrateData requires k.weight below the number of anchor cells of each dataset
+  anchor_table <- anchors@anchors
+  n_anchor_cells <- min(vapply(seq_along(seurat_list), function(i) length(unique(anchor_table$cell1[anchor_table$dataset1 == i])), numeric(1)))
+  if (integration_params$k_weight >= n_anchor_cells) {
+    integration_params$k_weight <- max(5, n_anchor_cells - 1)
+    message(paste("k.weight lowered to", integration_params$k_weight, "(", n_anchor_cells, "anchor cells in the smallest dataset )"))
+  }
+  
   # Integrate data
   message("Integrating datasets")
   integrated_object <- IntegrateData(
@@ -530,6 +471,11 @@ performStandardIntegration <- function(seurat_list) {
   
   # Clean integrated object for v5 compatibility
   integrated_object <- cleanIntegratedSeuratV5(integrated_object)
+  # Parameters actually applied, kept with the object for the parameter export
+  integrated_object@misc$integration_params <- list(method = "Seurat CCA anchors (FindIntegrationAnchors + IntegrateData)", dims = 30,
+                                                    n_features = length(features), k_filter = integration_params$k_filter,
+                                                    k_score = integration_params$k_score, k_anchor = integration_params$k_anchor,
+                                                    k_weight = integration_params$k_weight, n_anchors = nrow(anchor_table))
   
   # Set default assay and clean up metadata
   DefaultAssay(integrated_object) <- "integrated"
@@ -791,94 +737,60 @@ performSimpleMerge <- function(seurat_list, dataset_names = NULL) {
   return(merged_object)
 }
 
-
-
 performHarmonyIntegration <- function(seurat_list, harmony_vars = "dataset", 
                                       harmony_dims = 30) {
+  # Harmony integration: merge, log-normalize, scale variable features, PCA, then Harmony on the batch variable(s)
+  # Args:
+  #   seurat_list: List of preprocessed Seurat objects
+  #   harmony_vars: Metadata column(s) to correct for (default "dataset")
+  #   harmony_dims: Number of PCs given to Harmony (capped at 30)
+  # Returns:
+  #   Merged Seurat object with a "harmony" reduction; parameters stored in @misc$integration_params
   n_datasets <- length(seurat_list)
   message(paste("Starting Harmony with", n_datasets, "datasets"))
-  
   gc()
-  
   message("Step 1/3: Merging datasets")
   merged_object <- performSimpleMerge(seurat_list)
-  
   rm(seurat_list)
   gc()
-  
   message("Step 2/3: Normalizing and preprocessing")
-  
   merged_object <- NormalizeData(merged_object, verbose = FALSE)
-  
   n_cells <- ncol(merged_object)
-  n_features <- if (n_cells > 150000) {
-    2000
-  } else if (n_cells > 100000) {
-    2500
-  } else {
-    3000
-  }
-  
-  message(paste("Using", n_features, "variable features (optimized for 48 GB RAM)"))
-  
-  merged_object <- FindVariableFeatures(
-    merged_object,
-    selection.method = "vst",
-    nfeatures = n_features,
-    verbose = FALSE
-  )
-  
+  # Fewer variable features on very large datasets to limit the memory used by ScaleData
+  n_features <- if (n_cells > 150000) 2000 else if (n_cells > 100000) 2500 else 3000
+  message(paste("Using", n_features, "variable features"))
+  merged_object <- FindVariableFeatures(merged_object, selection.method = "vst", nfeatures = n_features, verbose = FALSE)
   message("Scaling ONLY variable features (memory optimization)")
-  merged_object <- ScaleData(
-    merged_object,
-    features = VariableFeatures(merged_object),
-    verbose = FALSE
-  )
-  
+  merged_object <- ScaleData(merged_object, features = VariableFeatures(merged_object), verbose = FALSE)
   gc()
-  
   message("Running PCA")
-  merged_object <- RunPCA(
-    merged_object,
-    features = VariableFeatures(merged_object),
-    npcs = 50,
-    verbose = FALSE
-  )
-  
+  merged_object <- runPCA_reproducible(merged_object, npcs = 50, seed = 42, features = VariableFeatures(merged_object), verbose = FALSE)
   gc()
-  
   message("Step 3/3: Running Harmony batch correction")
-  
   available_vars <- colnames(merged_object@meta.data)
   valid_vars <- harmony_vars[harmony_vars %in% available_vars]
-  
   if (length(valid_vars) == 0) {
     warning("Harmony variables not found, using 'dataset'")
     valid_vars <- "dataset"
   }
-  
+  # Harmony needs at least 2 levels per correction variable
   vars_to_remove <- c()
   for (var in valid_vars) {
     unique_levels <- unique(merged_object@meta.data[[var]])
     unique_levels <- unique_levels[!is.na(unique_levels)]
     n_levels <- length(unique_levels)
-    
     if (n_levels < 2) {
       message(paste("⚠ WARNING: Variable", var, "has only", n_levels, "level(s)"))
       message(paste("    Values:", paste(unique_levels, collapse = ", ")))
       vars_to_remove <- c(vars_to_remove, var)
     } else {
-      message(paste("✓ Variable", var, "has", n_levels, "levels:", 
-                    paste(head(unique_levels, 5), collapse = ", "),
-                    if(n_levels > 5) "..." else ""))
+      message(paste("✓ Variable", var, "has", n_levels, "levels:", paste(head(unique_levels, 5), collapse = ", "), if (n_levels > 5) "..." else ""))
     }
   }
-  
   if (length(vars_to_remove) > 0) {
     valid_vars <- setdiff(valid_vars, vars_to_remove)
     message(paste("Removed", length(vars_to_remove), "variable(s) with insufficient levels"))
   }
-  
   if (length(valid_vars) == 0) {
     stop(paste(
       "ERROR: No valid batch correction variables found.",
@@ -891,61 +803,42 @@ performHarmonyIntegration <- function(seurat_list, harmony_vars = "dataset",
       "\n\nAvailable metadata columns:", paste(available_vars, collapse = ", ")
     ))
   }
-  
   dims_use <- min(harmony_dims, 30)
   max_iter <- 20
-  
-  message(paste("Harmony parameters: dims =", dims_use, 
-                ", max.iter =", max_iter,
-                ", group.by.vars =", paste(valid_vars, collapse = ", ")))
-  
-  if (.Platform$OS.type == "windows") {
-    message(paste("RAM before Harmony:", round(memory.size()/1024, 1), "GB"))
+  harmony_version <- utils::packageVersion("harmony")
+  message(paste("Harmony", harmony_version, "parameters: dims =", dims_use, ", max_iter =", max_iter, ", group.by.vars =", paste(valid_vars, collapse = ", "), ", seed = 42"))
+  # Harmony initializes its clusters with k-means (random starts): fixed seed for reproducibility
+  set.seed(42)
+  # harmony >= 1.0 renamed max.iter.harmony to max_iter and stops when the old name is given
+  if (harmony_version >= "1.0.0") {
+    merged_object <- RunHarmony(merged_object, group.by.vars = valid_vars, dims.use = 1:dims_use, max_iter = max_iter, verbose = TRUE, plot_convergence = FALSE)
+  } else {
+    merged_object <- RunHarmony(merged_object, group.by.vars = valid_vars, dims.use = 1:dims_use, max.iter.harmony = max_iter, verbose = TRUE, plot_convergence = FALSE)
   }
-  
-  merged_object <- RunHarmony(
-    merged_object,
-    group.by.vars = valid_vars,
-    dims.use = 1:dims_use,
-    max.iter.harmony = max_iter,
-    verbose = TRUE,
-    plot_convergence = FALSE
-  )
-  
   gc()
-  
-  if (.Platform$OS.type == "windows") {
-    message(paste("RAM after Harmony:", round(memory.size()/1024, 1), "GB"))
-  }
-  
   merged_object$integration_method <- "harmony"
+  # Parameters actually applied, kept with the object for the report and reproducibility
+  merged_object@misc$integration_params <- list(method = "harmony", harmony_version = as.character(harmony_version), group_by_vars = valid_vars, dims = dims_use,
+                                                max_iter = max_iter, n_variable_features = n_features, npcs = 50, seed = 42)
   DefaultAssay(merged_object) <- "RNA"
-  
-  message(paste("✓ Harmony completed successfully:",
-                ncol(merged_object), "cells integrated"))
-  
+  message(paste("✓ Harmony completed successfully:", ncol(merged_object), "cells integrated"))
   return(merged_object)
 }
+
 ############################## Helper Functions ##############################
 
 calculateIntegrationParameters <- function(min_cells) {
-  # Calculate appropriate integration parameters based on dataset size
+  # Seurat CCA anchor parameters: Seurat defaults (k.filter 200, k.score 30, k.anchor 5, k.weight 100), lowered only when
+  # the smallest dataset is too small for them. k.weight is checked again against the anchors found (performStandardIntegration).
   # Args:
   #   min_cells: Minimum number of cells across datasets
   # Returns:
   #   List of integration parameters
-  
-  # Conservative parameter calculation to avoid errors
-  k_filter <- min(30, max(5, floor(min_cells / 15)))
-  k_score <- min(20, max(5, floor(min_cells / 20)))
-  k_anchor <- min(5, max(2, floor(min_cells / 50)))
-  k_weight <- min(30, max(5, floor(min_cells / 15)))
-  
   return(list(
-    k_filter = k_filter,
-    k_score = k_score,
-    k_anchor = k_anchor,
-    k_weight = k_weight
+    k_filter = min(200, max(5, floor(min_cells / 15))),
+    k_score = min(30, max(5, floor(min_cells / 20))),
+    k_anchor = min(5, max(2, floor(min_cells / 50))),
+    k_weight = min(100, max(5, floor(min_cells / 15)))
   ))
 }
 
@@ -1318,3 +1211,64 @@ performFastMNNIntegration <- function(seurat_list, mnn_dims = 50, mnn_k = 20) {
   
   return(merged_object)
 }
+
+# QC statistics of an integration (qc_stats of the multiple-datasets module), built from the datasets before merging,
+# while their @misc$qc_params and command history still exist (merge() drops both). Thresholds hold one value per
+# dataset (they can differ when the interface was changed between two uploads); normalization settings likewise.
+build_merge_qc_stats <- function(seurat_list) {
+  seurat_list <- Filter(Negate(is.null), seurat_list)
+  if (length(seurat_list) == 0) return(NULL)
+  ds_names <- vapply(seq_along(seurat_list), function(i) {
+    g <- seurat_list[[i]]@meta.data$integration_group
+    if (length(g) > 0 && !is.na(g[1]) && nzchar(as.character(g[1]))) as.character(g[1]) else paste0("Dataset_", i)
+  }, character(1))
+  med <- function(x, digits = 0) if (is.null(x) || length(x) == 0) NA else round(stats::median(x, na.rm = TRUE), digits)
+  per_dataset <- stats::setNames(lapply(seurat_list, function(o) {
+    q <- o@misc$qc_params; md <- o@meta.data
+    list(n_before = q$n_before %||% NA, n_after = ncol(o),
+         median_genes_before = q$median_genes_before %||% NA, median_genes_after = med(md$nFeature_RNA),
+         median_counts_before = q$median_counts_before %||% NA, median_counts_after = med(md$nCount_RNA),
+         median_mt_before = q$median_mt_before %||% NA, median_mt_after = med(md$percent.mt, 2))
+  }), ds_names)
+  thr_keys <- c("min_features", "max_features", "max_mt_percent")
+  has_thr <- vapply(seurat_list, function(o) !is.null(o@misc$qc_params), logical(1))
+  thresholds <- if (!any(has_thr)) NULL else stats::setNames(lapply(thr_keys, function(k) vapply(seurat_list[has_thr], function(o) {
+    v <- o@misc$qc_params[[k]]
+    if (is.null(v) || length(v) == 0) NA_real_ else as.numeric(v[1])
+  }, numeric(1))), thr_keys)
+  applied <- lapply(seurat_list, extract_applied_params)
+  field <- function(k) vapply(applied, function(a) as.character(a[[k]]), character(1))
+  return(list(dataset_names = ds_names, per_dataset = per_dataset, thresholds = thresholds,
+              normalization_method = field("normalization_method"), scale_factor = field("scale_factor"),
+              n_variable_features = field("n_variable_features")))
+}
+
+
+# Dataset names typed in the loading modal, applied at integration time (rule 10: names can change after upload).
+# Raw datasets were preprocessed under a placeholder (Dataset_<i>): their dataset / orig.ident columns and project name
+# (used by merge() to prefix cell names) take the final name too. Processed objects (integration_level column) keep
+# their 'dataset' column, which holds the original samples, and only get the integration group.
+applyDatasetNamesFromInputs <- function(seurat_objects_rv, num_datasets, input) {
+  loaded <- which(vapply(seq_len(num_datasets), function(i) !is.null(seurat_objects_rv[[paste0("seurat_object", i)]]), logical(1)))
+  final_names <- vapply(loaded, function(i) {
+    nm <- trimws(input[[paste0("dataset_name", i)]] %||% "")
+    if (nzchar(nm)) nm else paste0("Dataset_", i)
+  }, character(1))
+  # Identical names would give identical cell-name prefixes, and 10x barcodes are shared between samples
+  if (anyDuplicated(final_names)) stop("Two datasets have the same name (", paste(unique(final_names[duplicated(final_names)]), collapse = ", "), "): give each dataset a distinct name")
+  for (k in seq_along(loaded)) {
+    obj_key <- paste0("seurat_object", loaded[k])
+    obj <- seurat_objects_rv[[obj_key]]
+    obj@meta.data$integration_group <- final_names[k]
+    raw_dataset <- !"integration_level" %in% colnames(obj@meta.data)
+    if (raw_dataset) {
+      obj@meta.data$dataset <- final_names[k]
+      obj@meta.data$orig.ident <- factor(final_names[k])
+      obj@project.name <- final_names[k]
+    }
+    seurat_objects_rv[[obj_key]] <- obj
+    message(sprintf("Dataset %d -> integration_group%s: %s", loaded[k], if (raw_dataset) " and dataset" else "", final_names[k]))
+  }
+  return(seurat_objects_rv)
+}
+

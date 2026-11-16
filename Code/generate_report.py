@@ -8,6 +8,7 @@ from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT, TA_JUSTIFY
 from reportlab.platypus import Flowable
 from reportlab.lib.colors import HexColor
+from xml.sax.saxutils import escape
 
 # ══════════════════════════════════════════════════════════════════════════════
 # COLOR PALETTE
@@ -32,6 +33,8 @@ C_RED_L     = HexColor("#fdecea")
 C_RED       = HexColor("#c0392b")
 
 PAGE_W = A4[0] - 2*cm
+# Cover badge text; the version is passed by the app (--version) so the PDF never shows a stale release number
+CELLHUB_LABEL = "Cell-Hub"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # STYLES
@@ -123,7 +126,7 @@ class CoverBanner(Flowable):
         c.roundRect(bx, by, bw, bh, 4, fill=1, stroke=0)
         c.setFillColor(C_WHITE)
         c.setFont("Helvetica-Bold", 9)
-        c.drawCentredString(bx + bw/2, by + 5, "Cell-Hub  v1.0")
+        c.drawCentredString(bx + bw/2, by + 5, CELLHUB_LABEL)
         # Bottom meta
         c.setFillColor(HexColor("#4a6a82"))
         c.setFont("Helvetica", 7.5)
@@ -259,8 +262,8 @@ def param_table_2col(rows, widths=None, header_color=C_BLUE):
         is_na = str(value).strip() in ("NA", "N/A", "unknown", "not_run", "None", "")
         val_style = S("td_muted") if is_na else S("td_accent")
         data.append([
-            Paragraph(str(param), S("td_b")),
-            Paragraph(str(value), val_style),
+            Paragraph(escape(str(param)), S("td_b")),
+            Paragraph(escape(str(value)), val_style),
         ])
     t = Table(data, colWidths=widths, repeatRows=1)
     t.setStyle(TableStyle([
@@ -289,9 +292,9 @@ def param_table_3col(rows, widths=None, header_color=C_BLUE):
         is_na = str(value).strip() in ("NA", "N/A", "unknown", "not_run", "None", "")
         val_style = S("td_muted") if is_na else S("td_accent")
         data.append([
-            Paragraph(str(param), S("td_b")),
-            Paragraph(str(value), val_style),
-            Paragraph(str(desc), S("td_muted")),
+            Paragraph(escape(str(param)), S("td_b")),
+            Paragraph(escape(str(value)), val_style),
+            Paragraph(escape(str(desc)), S("td_muted")),
         ])
     t = Table(data, colWidths=widths, repeatRows=1)
     t.setStyle(TableStyle([
@@ -322,14 +325,15 @@ def cluster_composition_table(data):
     
     # Build header
     col_labels = ["Cluster", "N", "%"] + dataset_names + ["Median genes", "Median %mito"]
-    col_w = [32*mm, 14*mm, 12*mm] + [22*mm]*len(dataset_names) + [24*mm, 22*mm]
+    col_w = [32*mm, 14*mm, 15*mm] + [22*mm]*len(dataset_names) + [22*mm, 21*mm]
     
-    header_row = [Paragraph(f"<b>{c}</b>", S("th")) for c in col_labels]
+    header_row = [Paragraph(f"<b>{escape(c)}</b>", S("th")) for c in col_labels]
     table_data = [header_row]
     
+    total_int = int(total) if str(total).isdigit() else 0
     for cl_name, n_val, desc in cluster_rows:
         n_int = int(n_val)
-        pct   = round(n_int / int(total) * 100, 1)
+        pct   = round(n_int / total_int * 100, 1) if total_int > 0 else 0
         
         # Extract QC medians from description field
         med_genes = med_mt = "—"
@@ -339,7 +343,7 @@ def cluster_composition_table(data):
             med_mt = desc.split("median %mito:")[1].split("|")[0].strip()
         
         row = [
-            Paragraph(f"<b>{cl_name}</b>",
+            Paragraph(f"<b>{escape(cl_name)}</b>",
                       ParagraphStyle("cn", fontName="Helvetica-Bold", fontSize=9,
                                      textColor=C_ACCENT2, leading=12)),
             Paragraph(str(n_int), S("td_b")),
@@ -370,7 +374,7 @@ def cluster_composition_table(data):
     for ds_cat, ds_name in zip(dataset_cats, dataset_names):
         n_ds = next((r["value"] for r in data.get(ds_cat, [])
                      if r["parameter"] == f"[{ds_name}] Total nuclei"), "?")
-        pct_ds = round(int(n_ds)/int(total)*100, 1) if total != "?" else "?"
+        pct_ds = round(int(n_ds)/total_int*100, 1) if total_int > 0 and str(n_ds).isdigit() else "?"
         total_row.append(Paragraph(f"<b>{n_ds}</b><br/><font size='7'>{pct_ds}%</font>",
                                    S("td_b")))
     total_row += [Paragraph("—", S("td")), Paragraph("—", S("td"))]
@@ -550,7 +554,7 @@ def build_report(csv_path, output_path, module="multiple"):
             is_na = str(val).strip() in ("NA", "N/A", "unknown", "not_run", "None", "")
             pipeline_table_data.append([
                 Paragraph(step, S("td_b")),
-                Paragraph(val,  S("td_muted") if is_na else S("td_accent")),
+                Paragraph(escape(str(val)),  S("td_muted") if is_na else S("td_accent")),
             ])
     pt = Table(pipeline_table_data, colWidths=[85*mm, 85*mm], repeatRows=1)
     pt.setStyle(TableStyle([
@@ -575,19 +579,21 @@ def build_report(csv_path, output_path, module="multiple"):
     # ════════════════════════════════════════════════════════════════════════
     story.append(SectionBanner(1, "Quality Control", C_ACCENT))
     story.append(Spacer(1, 3*mm))
+    # DoubletFinder is mentioned only when it was run on this object
+    df_run = any(r["parameter"] != "Status" for r in data.get("DoubletFinder", []))
     story.append(Paragraph(
         "Quality control was applied to remove low-quality nuclei based on the number "
-        "of detected genes (<i>nFeature_RNA</i>), total UMI counts (<i>nCount_RNA</i>), "
-        "and the fraction of mitochondrial transcripts (<i>percent.mt</i>). "
-        "Doublets were detected using <b>DoubletFinder</b>.",
+        "of detected genes (<i>nFeature_RNA</i>) and the fraction of mitochondrial "
+        "transcripts (<i>percent.mt</i>)."
+        + (" Doublets were detected using <b>DoubletFinder</b>." if df_run else ""),
         S("body")
     ))
     story.append(Spacer(1, 2*mm))
     warning_data = [[Paragraph(
-        "<b>⚠ Note:</b> QC threshold values below reflect the state of the interface sliders "
-        "at the time of export. If parameters were adjusted after running QC, these values "
-        "may not correspond to the thresholds actually applied to the data. "
-        "Refer to the QC Statistics section for the actual pre/post-QC cell counts.",
+        "<b>Note:</b> QC thresholds are the values recorded when the QC filter was applied "
+        "(not the current position of the interface sliders). They are reported as \"not recorded\" "
+        "when the object was filtered in an earlier session that did not save them. "
+        "The QC Statistics section gives the pre/post-QC cell counts.",
         ParagraphStyle("warn", fontName="Helvetica", fontSize=8,
                        textColor=HexColor("#7d4e00"), leading=12)
     )]]
@@ -605,8 +611,6 @@ def build_report(csv_path, output_path, module="multiple"):
     story.append(Spacer(1, 3*mm))
     
     qc_thresh_rows = [
-        ("Min nCount_RNA",      g(data,"QC Thresholds","Min nCount_RNA"),      "Minimum total UMI counts per nucleus"),
-        ("Max nCount_RNA",      g(data,"QC Thresholds","Max nCount_RNA"),      "Maximum total UMI counts per nucleus"),
         ("Min nFeature_RNA",    g(data,"QC Thresholds","Min nFeature_RNA"),    "Minimum unique genes per nucleus"),
         ("Max nFeature_RNA",    g(data,"QC Thresholds","Max nFeature_RNA"),    "Maximum unique genes per nucleus"),
         ("Max mitochondrial %", g(data,"QC Thresholds","Max mitochondrial %"), "Upper limit for mitochondrial fraction"),
@@ -627,7 +631,7 @@ def build_report(csv_path, output_path, module="multiple"):
             rows = [(r["parameter"].replace(f"[{ds_label}] ", ""), r["value"], r["description"])
                     for r in data[cat]]
             story.append(KeepTogether([
-                Paragraph(f"QC Statistics — {ds_label}", S("h3")),
+                Paragraph(f"QC Statistics — {escape(ds_label)}", S("h3")),
                 Spacer(1, 2*mm),
                 param_table_3col(rows, widths=[72*mm, 28*mm, 72*mm], header_color=HexColor("#1a5276")),
                 Spacer(1, 3*mm),
@@ -649,8 +653,8 @@ def build_report(csv_path, output_path, module="multiple"):
         story.append(SectionBanner(2, "Integration & Normalisation", C_ACCENT2))
         story.append(Spacer(1, 3*mm))
         story.append(Paragraph(
-            f"A total of <b>{n_datasets}</b> dataset(s) were processed and integrated: "
-            f"<b>{ds_names}</b>. "
+            f"A total of <b>{escape(n_datasets)}</b> dataset(s) were processed and integrated: "
+            f"<b>{escape(ds_names)}</b>. "
             "Each dataset was independently normalised and highly variable features were identified "
             "before integration. The integration strategy is indicated below.",
             S("body")
@@ -664,7 +668,7 @@ def build_report(csv_path, output_path, module="multiple"):
             ("Variable features (n)", n_var_feat,   "HVG selected for PCA"),
             ("Scale factor",          g(data,"Normalization","Scale factor"), "LogNormalize only"),
         ]
-        harmony_vars = g(data, "Integration", "Harmony batch correction variable", None)
+        harmony_vars = g(data, "Integration", "Harmony - Batch correction variable", None)
         if harmony_vars and harmony_vars != "N/A":
             int_rows.append(("Harmony variable", harmony_vars, "Metadata used for batch correction"))
         story.append(param_table_3col(int_rows, widths=[68*mm, 40*mm, 64*mm], header_color=C_ACCENT2))
@@ -686,10 +690,10 @@ def build_report(csv_path, output_path, module="multiple"):
     story.append(SectionBanner(3, "Dimensionality Reduction & Clustering", C_GREEN))
     story.append(Spacer(1, 3*mm))
     story.append(Paragraph(
-        f"Principal component analysis was performed, and the top <b>{n_pcs} PCs</b> were "
-        f"retained for downstream neighbour graph construction (<b>k = {k_param}</b>) and "
+        f"Principal component analysis was performed, and the top <b>{escape(n_pcs)} PCs</b> were "
+        f"retained for downstream neighbour graph construction (<b>k = {escape(k_param)}</b>) and "
         "UMAP embedding. Clustering was performed using the "
-        f"<b>{algo}</b> algorithm at resolution <b>{resolution}</b>.",
+        f"<b>{escape(algo)}</b> algorithm at resolution <b>{escape(resolution)}</b>.",
         S("body")
     ))
     story.append(Spacer(1, 3*mm))
@@ -712,9 +716,9 @@ def build_report(csv_path, output_path, module="multiple"):
     story.append(Spacer(1, 3*mm))
     cl_names_str = g(data, "Cluster Composition", "Cluster names (all)", "")
     story.append(Paragraph(
-        f"A total of <b>{n_clusters} clusters</b> were identified across "
-        f"<b>{n_total} nuclei</b>. "
-        f"Cluster labels: <b>{cl_names_str}</b>. "
+        f"A total of <b>{escape(n_clusters)} clusters</b> were identified across "
+        f"<b>{escape(n_total)} nuclei</b>. "
+        f"Cluster labels: <b>{escape(cl_names_str)}</b>. "
         "The table below shows the composition of each cluster, including "
         "the contribution per dataset and median QC metrics.",
         S("body")
@@ -728,10 +732,41 @@ def build_report(csv_path, output_path, module="multiple"):
     story.append(cluster_composition_table(data))
 
     # ════════════════════════════════════════════════════════════════════════
-    # PAGE 4 — REPRODUCIBILITY + NOTES
+    # STORED ANALYSES — DE tables, exclusive markers, pathway enrichment (only when tables were stored)
+    # ════════════════════════════════════════════════════════════════════════
+    stored_rows = [(r["parameter"], r["value"], r["description"])
+                   for r in data.get("Stored Analyses", [])]
+    enrich_cats = [k for k in data.keys() if k.startswith("Pathway Enrichment - ")]
+    section_n = 5
+    if stored_rows or enrich_cats:
+        story.append(PageBreak())
+        story.append(SectionBanner(section_n, "Stored Analyses", C_ORANGE))
+        section_n += 1
+        story.append(Spacer(1, 3*mm))
+        story.append(Paragraph(
+            "Result tables stored during the session (differential expression, exclusive biomarkers, "
+            "pathway enrichment), with the groups compared and the settings applied. The same tables are "
+            "saved with the analysis file (Save &amp; Session).",
+            S("body")
+        ))
+        story.append(Spacer(1, 3*mm))
+        if stored_rows:
+            story.append(param_table_3col(stored_rows, widths=[58*mm, 50*mm, 64*mm], header_color=C_ORANGE))
+            story.append(Spacer(1, 4*mm))
+        for cat in enrich_cats:
+            rows = [(r["parameter"], r["value"]) for r in data[cat]]
+            story.append(KeepTogether([
+                Paragraph(escape(cat), S("h3")),
+                Spacer(1, 2*mm),
+                param_table_2col(rows, widths=[50*mm, 122*mm], header_color=HexColor("#b35c1e")),
+                Spacer(1, 3*mm),
+            ]))
+
+    # ════════════════════════════════════════════════════════════════════════
+    # LAST PAGE — REPRODUCIBILITY + NOTES
     # ════════════════════════════════════════════════════════════════════════
     story.append(PageBreak())
-    story.append(SectionBanner(5, "Reproducibility & Methods Notes", C_NAVY))
+    story.append(SectionBanner(section_n, "Reproducibility & Methods Notes", C_NAVY))
     story.append(Spacer(1, 4*mm))
     story.append(Paragraph("Reproducibility", S("h2")))
     story.append(Paragraph(
@@ -742,24 +777,36 @@ def build_report(csv_path, output_path, module="multiple"):
         "graph-based clustering (<code>FindClusters</code>).",
         S("body")
     ))
+    # Versions and export details recorded by the application (Reproducibility rows of the CSV)
+    repro_rows = [(r["parameter"], r["value"], r["description"])
+                  for r in data.get("Reproducibility", [])]
+    if repro_rows:
+        story.append(Spacer(1, 3*mm))
+        story.append(param_table_3col(repro_rows, widths=[55*mm, 45*mm, 72*mm], header_color=C_NAVY))
     story.append(Spacer(1, 4*mm))
     story.append(Paragraph("Software & References", S("h2")))
     refs = [
-        ("Seurat v5",     "Hao et al., Cell 2024. DOI: 10.1016/j.cell.2021.04.048"),
+        ("Seurat v5",     "Hao et al., Nat Biotechnol 2024. DOI: 10.1038/s41587-023-01767-y"),
         ("Harmony",       "Korsunsky et al., Nat Methods 2019. DOI: 10.1038/s41592-019-0619-0"),
         ("DoubletFinder", "McGinnis et al., Cell Systems 2019. DOI: 10.1016/j.cels.2019.03.003"),
         ("Monocle 3",     "Cao et al., Nature 2019. DOI: 10.1038/s41586-019-0969-x"),
-        ("Cell-Hub",      "Cell-Hub GitHub repository — GaspardMacaux/CellHub"),
+        ("Cell-Hub",      "https://github.com/GaspardMacaux/Cell-Hub"),
     ]
+    # Enrichment software cited only when an enrichment run is in the report
+    if enrich_cats:
+        refs[-1:-1] = [
+            ("fgsea",           "Korotkevich et al., bioRxiv 2016. DOI: 10.1101/060012"),
+            ("Gene Ontology",   "The Gene Ontology Consortium, Genetics 2023. DOI: 10.1093/genetics/iyad031"),
+        ]
     for tool, ref in refs:
         story.append(Paragraph(f"<b>{tool}:</b> {ref}", S("body")))
     story.append(Spacer(1, 4*mm))
     story.append(DividerLine())
     story.append(Spacer(1, 3*mm))
     story.append(Paragraph(
-        f"Report generated by Cell-Hub on {export_ts}. "
+        f"Report generated by Cell-Hub on {escape(export_ts)}. "
         "Parameter values reflect the state of the Seurat object at export time. "
-        "For questions or issues, refer to the Cell-Hub documentation on Read the Docs.",
+        "Documentation and issues: README and issue tracker of the Cell-Hub GitHub repository.",
         S("small_i")
     ))
 
@@ -784,7 +831,8 @@ if __name__ == "__main__":
     parser.add_argument("--csv", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--module", default="single")
+    parser.add_argument("--version", default="")
     args = parser.parse_args()
-    build_report(args.csv, args.output)
-
-
+    if args.version:
+        CELLHUB_LABEL = f"Cell-Hub  v{args.version}"
+    build_report(args.csv, args.output, module=args.module)

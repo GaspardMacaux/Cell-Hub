@@ -1,4 +1,4 @@
-# download_functions_newarch.R
+# download_functions.R
 
 generateFileName <- function(object_name = "Dataset", plot_name = NULL, file_type = "pdf") {
   # Generate standardized file name for downloads
@@ -259,6 +259,8 @@ downloadOpenDocumentSpreadsheet <- function(data_lists, object_name, data_name =
 
 downloadSeuratObject <- function(seurat_object, object_name, show_modal = TRUE) {
   # Download Seurat object as RDS file
+  # Slims the object before saving (removes scale.data) and backs up full metadata
+  # so all custom columns survive any post-load pipeline that resets @meta.data.
   # Args:
   #   seurat_object: Seurat object to download
   #   object_name: Name of the dataset
@@ -289,7 +291,19 @@ downloadSeuratObject <- function(seurat_object, object_name, show_modal = TRUE) 
       }
       
       tryCatch({
-        saveRDS(seurat_object, file)
+        # Slim the object to remove scale.data (heavy, recomputed on demand)
+        seurat_to_save <- tryCatch(
+          slimSeuratObject(seurat_object, keep_counts = TRUE, keep_scale_data = FALSE),
+          error = function(e) {
+            message(paste("slimSeuratObject failed, saving as-is:", e$message))
+            seurat_object
+          }
+        )
+        # Back up full metadata so all custom columns (ClusterIdents, annotations,
+        # condition, etc.) survive any post-load pipeline that resets @meta.data
+        seurat_to_save@misc$metadata_backup <- seurat_object@meta.data
+        message(paste("Metadata backup saved:", ncol(seurat_object@meta.data), "columns"))
+        saveRDS(seurat_to_save, file)
         if (show_modal) {
           removeModal()
         }
@@ -313,8 +327,9 @@ downloadSeuratObject <- function(seurat_object, object_name, show_modal = TRUE) 
   })
 }
 
-createDownloadHandler <- function(reactive_data, object_name_reactive, data_name, 
-                                   download_type, plot_params = NULL, show_modal = FALSE) {
+createDownloadHandler <- function(reactive_data, object_name_reactive, data_name,
+                                  download_type, plot_params = NULL, show_modal = FALSE,
+                                  plot_modifier = NULL) {
   # Create a downloadHandler for Shiny
   # Args:
   #   reactive_data: Reactive expression containing the data/plot
@@ -323,6 +338,7 @@ createDownloadHandler <- function(reactive_data, object_name_reactive, data_name
   #   download_type: "csv", "plot", "seurat", "ods"
   #   plot_params: List with plot parameters (file_type, width, height, dpi)
   #   show_modal: Whether to show modal for Seurat downloads
+  #   plot_modifier: Optional function(plot) -> plot to apply theme/styling before export
   # Returns:
   #   downloadHandler function
   
@@ -401,6 +417,11 @@ createDownloadHandler <- function(reactive_data, object_name_reactive, data_name
         name <- if (is.reactive(data_name)) data_name() else data_name
         
         if (download_type == "plot") {
+          # Apply plot_modifier for theme/styling if provided
+          if (!is.null(plot_modifier) && is.function(plot_modifier) && inherits(data, "gg")) {
+            data <- plot_modifier(data)
+          }
+          
           # Get plot parameters
           file_type <- if (!is.null(plot_params$file_type)) {
             if (is.reactive(plot_params$file_type)) plot_params$file_type() else plot_params$file_type
@@ -421,7 +442,7 @@ createDownloadHandler <- function(reactive_data, object_name_reactive, data_name
           # Map file type to proper device name
           device_name <- switch(tolower(file_type),
                                 "pdf" = "pdf",
-                                "png" = "png", 
+                                "png" = "png",
                                 "tiff" = "tiff",
                                 "tif" = "tiff",
                                 "jpeg" = "jpeg",
@@ -448,10 +469,10 @@ createDownloadHandler <- function(reactive_data, object_name_reactive, data_name
           } else {
             # For regular ggplots, use ggsave with corrected device name
             if (device_name %in% c("png", "tiff", "jpeg")) {
-              ggsave(file, plot = data, device = device_name, 
+              ggsave(file, plot = data, device = device_name,
                      width = width, height = height, dpi = dpi, units = "in")
             } else {
-              ggsave(file, plot = data, device = device_name, 
+              ggsave(file, plot = data, device = device_name,
                      width = width, height = height, units = "in")
             }
           }
@@ -502,14 +523,16 @@ createDownloadHandler <- function(reactive_data, object_name_reactive, data_name
         }
         
       }, error = function(e) {
-        message("ERROR in download content function: ", e$message)
-        showNotification(paste("Download failed:", e$message), type = "error")
+        # req() on missing data raises a silent error with an empty message: say what is missing instead of "Download failed: "
+        no_data <- inherits(e, "shiny.silent.error") || !nzchar(conditionMessage(e))
+        msg <- if (no_data) "nothing to download yet (no result available: run the analysis first)" else conditionMessage(e)
+        log_name <- tryCatch(isolate(if (is.reactive(data_name)) data_name() else data_name), error = function(e2) "unknown")
+        message("ERROR in download content function [", log_name, "]: ", msg)
+        showNotification(paste("Download failed:", msg), type = if (no_data) "warning" else "error", duration = 8)
       })
     }
   )
 }
-
-
 
 getObjectNameForDownload <- function(seurat_object = NULL, input_name = NULL, default_name = "Dataset") {
   # Get object name for download file naming
@@ -536,5 +559,47 @@ getObjectNameForDownload <- function(seurat_object = NULL, input_name = NULL, de
     
   }, error = function(e) {
     return(default_name)
+  })
+}
+
+# Generate the PDF analysis report by calling generate_report.py (Python/ReportLab CLI).
+# Returns list(success, message, script_path); the caller decides how to notify the user.
+generate_pdf_report <- function(params_df, output_file, module = c("single", "multiple")) {
+  module <- match.arg(module)
+  # /app is the copy installed by the Dockerfile; the app directory is the fallback for local runs
+  script_candidates <- c("/app/generate_report.py", file.path(getwd(), "generate_report.py"))
+  script_path <- script_candidates[file.exists(script_candidates)][1]
+  if (is.na(script_path)) return(list(success = FALSE, message = "generate_report.py not found in /app/ or the app directory", script_path = NA_character_))
+  python_bin <- Sys.which("python3")
+  if (!nzchar(python_bin)) return(list(success = FALSE, message = "python3 not found on PATH", script_path = script_path))
+  csv_tmp <- tempfile(fileext = ".csv")
+  on.exit(unlink(csv_tmp), add = TRUE)
+  write.csv(params_df, csv_tmp, row.names = FALSE)
+  output <- suppressWarnings(system2(python_bin,
+                                     args = c(shQuote(script_path), "--csv", shQuote(csv_tmp),
+                                              "--output", shQuote(output_file), "--module", module),
+                                     stdout = TRUE, stderr = TRUE))
+  status <- attr(output, "status")
+  message("[Report] script: ", script_path, " | python: ", python_bin, " | module: ", module)
+  # A non-zero exit status or a missing/empty file both mean failure (a partial PDF must not pass)
+  if ((!is.null(status) && status != 0) || !file.exists(output_file) || file.size(output_file) == 0) {
+    # The last lines of the output carry the Python exception
+    return(list(success = FALSE, message = paste(tail(output, 8), collapse = "\n"), script_path = script_path))
+  }
+  return(list(success = TRUE, message = paste(output, collapse = "\n"), script_path = script_path))
+}
+
+# Keeps a download button disabled until the result it exports exists. Called from the *_server.R files (the observer
+# belongs to the calling session, like the downloadHandler built by createDownloadHandler). available() returns that
+# result: NULL, FALSE, an empty table or list, a req() / validate() failure or any error mean "nothing to download yet".
+# The "disabled" class is set too: on a download link (<a class="btn">) it is the class, not the attribute, that blocks the click.
+bind_download_state <- function(id, available) {
+  observe({
+    ok <- tryCatch({
+      x <- available()
+      !is.null(x) && !isFALSE(x) && !(is.data.frame(x) && nrow(x) == 0) && !(is.list(x) && !is.data.frame(x) && length(x) == 0)
+    }, error = function(e) FALSE)
+    shinyjs::toggleState(id, condition = ok)
+    shinyjs::toggleCssClass(id, "disabled", condition = !ok)
   })
 }
