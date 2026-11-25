@@ -17,9 +17,11 @@ docker run -p 3838:3838 gaspardmacaux/cell-hub:2.0.0
 
 Open http://localhost:3838 in your browser. Large datasets need memory: raise the memory limit of Docker Desktop (Settings → Resources) if the analysis stops.
 
-Memory needed, measured on subsets of the 10x 1.3 million mouse brain cells dataset (Supplementary Data 2 of the article): about 16 GB for a sample of 10,000 cells, 32 GB for a single-sample analysis of 100,000 cells, 48 GB to integrate 100,000 cells and 80 GB for 200,000 cells (peak 64 GB). DoubletFinder is the most demanding step (60 GB for 50,000 cells) and is run sample by sample.
+**New to Cell-Hub?** The [tutorial](TUTORIAL.md) runs every module on public demonstration data ([doi:10.5281/zenodo.24198709](https://doi.org/10.5281/zenodo.24198709)) in about an hour and a half.
 
-The image used in the Cell-Hub article is `gaspardmacaux/cell-hub:2.0.0`, digest `sha256:08c10cbbbcb8078f9e3fb989fcff440384235c6755016f1ff9af9e978114af74`; to be sure to get exactly this image, pull it by digest: `docker pull gaspardmacaux/cell-hub@sha256:08c10cbbbcb8078f9e3fb989fcff440384235c6755016f1ff9af9e978114af74`.
+Memory needed, measured on subsets of the 10x 1.3 million mouse brain cells dataset (Supplementary Data 2 of the article): about 16 GB for a sample of 10,000 cells, 32 GB for a single-sample analysis of 100,000 cells, 48 GB to integrate 100,000 cells; 200,000 cells were analysed completely in 83 min with a peak of 64 GB. DoubletFinder is the most demanding step (60 GB for 50,000 cells) and is run sample by sample.
+
+The image used in the Cell-Hub article is `gaspardmacaux/cell-hub:2.0.0`, digest `sha256:51142acfefe3bdecc0f421c67dccdbeba826c98612529533a6f187e2475bb29b`; to be sure to get exactly this image, pull it by digest: `docker pull gaspardmacaux/cell-hub@sha256:51142acfefe3bdecc0f421c67dccdbeba826c98612529533a6f187e2475bb29b`.
 
 The image contains the application, every R package at a fixed version and CellHub Database 2.1.2. The source code of the image is in [`Code/`](Code) and its build recipe in [`docker/`](docker).
 

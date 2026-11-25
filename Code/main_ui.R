@@ -1365,11 +1365,11 @@ ui <- dashboardPage(
                 ),
                 fluidRow(
                   column(width = 4,
-                         selectInput("coexpr_groupby_col_single", "Group by column:", choices = NULL),
-                         tags$small("Metadata column to restrict cells by", style = "color: #666;")                  ),
+                         selectInput("coexpr_groupby_col_single", "Filter cells by column (optional):", choices = NULL),
+                         tags$small("Metadata column whose values are listed in 'Keep only'", style = "color: #666;")                  ),
                   column(width = 4,
-                         selectInput("coexpr_filter_groups_single", "Restrict to group(s):", choices = NULL, multiple = TRUE),
-                         tags$small("Leave empty to use all cells", style = "color: #666;")
+                         selectInput("coexpr_filter_groups_single", "Keep only:", choices = NULL, multiple = TRUE),
+                         tags$small("Leave empty to use all cells; applied when you click Analyze", style = "color: #666;")
                   )
                 ),
                 fluidRow(
@@ -3600,17 +3600,10 @@ ui <- dashboardPage(
                          style = "margin: 0; font-size: 13px;")
                 ),
                 fluidRow(
-                  column(width = 4,
-                         selectInput("coexpr_group_by_multiple", "Primary grouping:", choices = c("By Dataset" = "dataset", "By Cluster" = "cluster"), selected = "dataset"),
-                         conditionalPanel(condition = "input.coexpr_group_by_multiple == 'cluster'",
-                                          selectInput("coexpr_secondary_split_multiple", "Show dataset breakdown:", choices = c("No" = "none", "Yes" = "dataset"), selected = "none")),
-                         conditionalPanel(condition = "input.coexpr_group_by_multiple == 'dataset'",
-                                          selectInput("coexpr_secondary_split_multiple_alt", "Show cluster breakdown:", choices = c("No" = "none", "Yes" = "cluster"), selected = "none"))
-                  ),
-                  column(width = 4, selectInput("coexpr_groupby_col_merge", "Group by column:", choices = NULL),
-                         tags$small("Metadata column to restrict cells by", style = "color: #666;")),
-                  column(width = 4, selectInput("coexpr_filter_groups_merge", "Restrict to group(s):", choices = NULL, multiple = TRUE),
-                         tags$small("Leave empty to use all cells", style = "color: #666;"))
+                  column(width = 4, selectInput("coexpr_groupby_col_merge", "Split by column:", choices = NULL),
+                         tags$small("Metadata column compared within each cluster (e.g. dataset, condition, stage); applied when you click Analyze", style = "color: #666;")),
+                  column(width = 4, selectInput("coexpr_filter_groups_merge", "Keep only (optional):", choices = NULL, multiple = TRUE),
+                         tags$small("Values of the split column to analyse; leave empty to use all cells", style = "color: #666;"))
                 ),
                 fluidRow(
                   column(width = 4, actionButton("analyze_coexpression_multiple", tagList(icon("calculator"), " Analyze Co-expression"), class = "btn-white-green btn-full-width", style = "margin-bottom: 10px;")),
@@ -3620,7 +3613,17 @@ ui <- dashboardPage(
                 tags$hr(),
                 tabsetPanel(
                   tabPanel("Results Table", DTOutput("gene_coexpression_table_multiple")),
-                  tabPanel("Visualization", plotOutput("gene_coexpression_plot_multiple", height = "700px")),
+                  tabPanel("Visualization",
+                           fluidRow(
+                             column(width = 4, selectInput("coexpr_group_by_multiple", "Bars per:", choices = c("Value of the split column" = "dataset", "Cluster" = "cluster"), selected = "dataset")),
+                             column(width = 4,
+                                    conditionalPanel(condition = "input.coexpr_group_by_multiple == 'cluster'",
+                                                     selectInput("coexpr_secondary_split_multiple", "One panel per cluster, split by the split column:", choices = c("No" = "none", "Yes" = "dataset"), selected = "none")),
+                                    conditionalPanel(condition = "input.coexpr_group_by_multiple == 'dataset'",
+                                                     selectInput("coexpr_secondary_split_multiple_alt", "One panel per value, split by cluster:", choices = c("No" = "none", "Yes" = "cluster"), selected = "none"))),
+                             column(width = 4, tags$small("These settings change the plot only; the results table always lists every cluster for each value of the split column.", style = "color: #666;"))
+                           ),
+                           plotOutput("gene_coexpression_plot_multiple", height = "700px")),
                   tabPanel("Summary", tableOutput("coexpression_summary_stats_multiple"))                )
               ),
               tabPanel(

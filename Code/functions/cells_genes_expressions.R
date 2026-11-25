@@ -243,7 +243,7 @@ build_de_datatable <- function(df, pvalue_cols = c("P-value", "Adj. P-value"), o
 
 # Enhanced function to analyze gene co-expression with better visualizations
 analyze_gene_coexpression <- function(seurat_obj, genes, assay_name = "RNA",
-                                      expression_thresholds = NULL, is_integrated = FALSE, threshold_layer = "data") {
+                                      expression_thresholds = NULL, is_integrated = FALSE, threshold_layer = "data", split_col = "dataset") {
   # Compute per-cell co-expression statistics for 2+ genes.
   # Every boolean comparison operates on the SAME cell barcodes — verified by
   # explicit assertions so silent index misalignment cannot happen.
@@ -252,10 +252,11 @@ analyze_gene_coexpression <- function(seurat_obj, genes, assay_name = "RNA",
   #   genes: Character vector or comma-separated string of gene names (>= 2)
   #   assay_name: Assay to pull expression from (default: "RNA")
   #   expression_thresholds: Single value or named vector with threshold per gene
-  #   is_integrated: If TRUE, also break results down by dataset
+  #   is_integrated: If TRUE, also break results down by the values of split_col
+  #   split_col: Metadata column used for the second level of the breakdown (default "dataset"); stored in the "Dataset" column of the results
   #   threshold_layer: "counts" (positive = at least `threshold` UMIs) or "data" (positive = log-normalized value above `threshold`)
   # Returns:
-  #   List with: data (data.frame), genes_analyzed, thresholds_used, threshold_layer, is_integrated
+  #   List with: data (data.frame), genes_analyzed, thresholds_used, threshold_layer, is_integrated, split_label (name of split_col)
   tryCatch({
     # Parse genes from text input
     if (is.character(genes) && length(genes) == 1) {
@@ -296,7 +297,13 @@ analyze_gene_coexpression <- function(seurat_obj, genes, assay_name = "RNA",
     stopifnot("[co-expression] Binary matrix colnames diverged from cell barcodes" = identical(colnames(gene_binary), expected_cells))
     # --- Metadata ---
     metadata <- data.frame(cell = expected_cells, cluster = as.character(Idents(seurat_obj)), stringsAsFactors = FALSE)
-    if (is_integrated && "dataset" %in% colnames(seurat_obj@meta.data)) metadata$dataset <- seurat_obj@meta.data$dataset
+    # Second level of the breakdown read from the chosen metadata column; without it, only the per-cluster analysis is possible
+    if (is_integrated) {
+      if (is.null(split_col) || !nzchar(split_col) || !split_col %in% colnames(seurat_obj@meta.data)) stop(sprintf("Split column '%s' not found in the metadata", split_col))
+      split_values <- as.character(seurat_obj@meta.data[[split_col]])
+      if (anyNA(split_values)) stop(sprintf("Split column '%s' contains missing values: choose another column or keep only non-missing values", split_col))
+      metadata$dataset <- split_values
+    }
     threshold_text <- format_threshold_label(genes, expression_thresholds[genes], threshold_layer)
     # --- Inner function: analyze one group of cells ---
     analyze_group <- function(group_cells, group_name, dataset_name = NULL) {
@@ -367,7 +374,7 @@ analyze_gene_coexpression <- function(seurat_obj, genes, assay_name = "RNA",
                                                 all_results$Pct_Both, all_results$Pct_Only_Gene1, all_results$Pct_Only_Gene2, all_results$Pct_Neither)
     }
     return(list(data = all_results, genes_analyzed = genes, thresholds_used = expression_thresholds,
-                threshold_layer = threshold_layer, is_integrated = is_integrated))
+                threshold_layer = threshold_layer, is_integrated = is_integrated, split_label = if (is_integrated) split_col else NULL))
   }, error = function(e) {
     stop(paste("Error in analyze_gene_coexpression:", e$message))
   })
@@ -377,6 +384,8 @@ render_coexpression_table <- function(coexpression_data, table_id) {
   df          <- coexpression_data$data
   is_integrated <- coexpression_data$is_integrated
   genes       <- coexpression_data$genes_analyzed
+  # Title of the second-level column: name of the metadata column chosen for the split ("Dataset" for older results)
+  split_label <- coexpression_data$split_label %||% "Dataset"
   
   if (length(genes) == 2) {
     # Separate Overall rows, sort clusters by Pct_Both desc, append Overall at bottom
@@ -394,7 +403,7 @@ render_coexpression_table <- function(coexpression_data, table_id) {
     display_df <- display_df[, intersect(keep_cols, names(display_df)), drop = FALSE]
     
     col_names <- if (is_integrated && "Dataset" %in% names(display_df)) {
-      c("Cluster", "Dataset", "Total nuclei",
+      c("Cluster", split_label, "Total nuclei",
         "Both (%)",
         paste0("Only ", genes[1], " (%)"),
         paste0("Only ", genes[2], " (%)"))
@@ -434,7 +443,7 @@ render_coexpression_table <- function(coexpression_data, table_id) {
       ) %>%
       formatStyle(
         'Pct_Both',
-        background         = styleColorBar(c(0, 100), '#a8d5a2'),
+        background         = styleColorBar(c(0, 100), '#B7E1DB'),
         backgroundSize     = '98% 70%',
         backgroundRepeat   = 'no-repeat',
         backgroundPosition = 'center',
@@ -442,14 +451,14 @@ render_coexpression_table <- function(coexpression_data, table_id) {
       ) %>%
       formatStyle(
         'Pct_Only_Gene1',
-        background         = styleColorBar(c(0, 100), '#90caf9'),
+        background         = styleColorBar(c(0, 100), '#BCD0DF'),
         backgroundSize     = '98% 70%',
         backgroundRepeat   = 'no-repeat',
         backgroundPosition = 'center'
       ) %>%
       formatStyle(
         'Pct_Only_Gene2',
-        background         = styleColorBar(c(0, 100), '#ffcc80'),
+        background         = styleColorBar(c(0, 100), '#F6C7B9'),
         backgroundSize     = '98% 70%',
         backgroundRepeat   = 'no-repeat',
         backgroundPosition = 'center'
@@ -462,7 +471,8 @@ render_coexpression_table <- function(coexpression_data, table_id) {
           'Dataset',
           backgroundColor = styleEqual(
             unique(display_df$Dataset),
-            rainbow(length(unique(display_df$Dataset)), alpha = 0.3)
+            # Neutral tints cycled over the values of the split column
+            rep_len(c("#EEF2F6", "#F6F1EA", "#EAF3EE", "#F3EEF5"), length(unique(display_df$Dataset)))
           )
         )
     }
@@ -489,7 +499,8 @@ render_coexpression_table <- function(coexpression_data, table_id) {
       ),
       rownames = FALSE,
       caption  = paste("Co-expression Analysis -", paste(genes, collapse = ", ")),
-      escape   = FALSE
+      escape   = FALSE,
+      colnames = sub("^Dataset$", split_label, names(df))
     ) %>%
       formatStyle(
         'Group',
@@ -516,7 +527,8 @@ render_coexpression_table <- function(coexpression_data, table_id) {
           'Dataset',
           backgroundColor = styleEqual(
             unique(df$Dataset),
-            rainbow(length(unique(df$Dataset)), alpha = 0.3)
+            # Neutral tints cycled over the values of the split column
+            rep_len(c("#EEF2F6", "#F6F1EA", "#EAF3EE", "#F3EEF5"), length(unique(df$Dataset)))
           )
         )
     }
@@ -778,14 +790,15 @@ aggregate_coexpr_per_cluster <- function(detail_data, genes_analyzed) {
 # group_by: "cluster" or "dataset" (primary grouping, one facet per level when a breakdown is shown)
 # secondary_split: "none", "dataset" (with group_by = "cluster") or "cluster" (with group_by = "dataset")
 # plot_type: "bar" (stacked bars) or "heat" (tiles labelled with the percentage)
-create_coexpression_plot <- function(coexpr_data, genes_analyzed, group_by = "cluster", secondary_split = "none", plot_type = "bar") {
+create_coexpression_plot <- function(coexpr_data, genes_analyzed, group_by = "cluster", secondary_split = "none", plot_type = "bar", split_label = "Dataset") {
   n_genes <- length(genes_analyzed)
   if (n_genes < 2) stop("Co-expression plot needs at least 2 genes")
   # Category count columns and labels, from the strongest co-expression pattern to none
   if (n_genes == 2) {
     count_cols <- c("N_Both_Positive", "N_Only_Gene1", "N_Only_Gene2", "N_Neither")
     category_labels <- c(paste("Both", genes_analyzed[1], "&", genes_analyzed[2]), paste("Only", genes_analyzed[1]), paste("Only", genes_analyzed[2]), "Neither")
-    fill_scale <- scale_fill_manual(values = setNames(c("#2E8B57", "#4169E1", "#DC143C", "#D3D3D3"), category_labels), name = "Expression pattern")
+    # Muted palette shared with the results table: teal (both), steel blue (gene 1 only), coral (gene 2 only), light grey (neither)
+    fill_scale <- scale_fill_manual(values = setNames(c("#2A9D8F", "#457B9D", "#E76F51", "#E9ECEF"), category_labels), name = "Expression pattern")
   } else {
     counts_desc <- rev(seq(0, n_genes))
     count_cols <- paste0("N_Expressing_", counts_desc, "_Genes")
@@ -817,13 +830,15 @@ create_coexpression_plot <- function(coexpr_data, genes_analyzed, group_by = "cl
   if ("Group" %in% keys) long$Group <- factor(long$Group, levels = names(sort(cluster_share, decreasing = TRUE)))
   if ("Dataset" %in% keys) long$Dataset <- factor(long$Dataset, levels = sort(unique(rows$Dataset)))
   x_col <- if (is.null(secondary_col)) primary_col else secondary_col
+  # Labels use the name of the metadata column chosen for the split
+  split_label <- if (is.null(split_label) || !nzchar(split_label)) "Dataset" else split_label
   subtitle <- switch(paste(group_by, if (is.null(secondary_col)) "none" else "split"),
-                     "cluster none" = if (has_dataset) "Per cluster, datasets pooled" else "Per cluster",
-                     "cluster split" = "Per cluster, split by dataset",
-                     "dataset none" = "Per dataset, clusters pooled",
-                     "dataset split" = "Per dataset, split by cluster")
+                     "cluster none" = if (has_dataset) paste0("Per cluster, ", split_label, " pooled") else "Per cluster",
+                     "cluster split" = paste0("Per cluster, split by ", split_label),
+                     "dataset none" = paste0("Per ", split_label, ", clusters pooled"),
+                     "dataset split" = paste0("Per ", split_label, ", split by cluster"))
   plot_title <- paste("Co-expression:", paste(genes_analyzed, collapse = ", "))
-  x_title <- if (x_col == "Dataset") "Dataset" else "Cluster"
+  x_title <- if (x_col == "Dataset") split_label else "Cluster"
   if (identical(plot_type, "heat")) {
     # One row per expression pattern (strongest at the top), one column per group, cell = % of the group's cells
     long$Category <- factor(long$Category, levels = rev(category_labels))
@@ -917,7 +932,7 @@ run_coexpression_de <- function(seurat_obj, genes, clusters, assay_name = "RNA",
 }
 
 # Function to create co-expression summary statistics
-create_coexpression_summary_stats <- function(data, genes) {
+create_coexpression_summary_stats <- function(data, genes, split_label = "Dataset") {
   if (length(genes) == 2) {
     # For 2 genes
     overall_data <- data[grepl("Overall", data$Group), ]
@@ -928,6 +943,8 @@ create_coexpression_summary_stats <- function(data, genes) {
     overall_data <- data[grepl("Overall", data$Group), ]
     summary_stats <- data.frame(Dataset = gsub("Overall ", "", overall_data$Group), Total_Cells = overall_data$N_Cells_Total, All_Genes = paste0(overall_data$N_All_Positive, " (", overall_data$Pct_All, "%)"), Any_Gene = paste0(overall_data$N_Any_Positive, " (", overall_data$Pct_Any, "%)"), No_Genes = paste0(overall_data$N_None_Positive, " (", overall_data$Pct_None, "%)"))
   }
+  # First column titled with the metadata column chosen for the split
+  names(summary_stats)[1] <- if (is.null(split_label) || !nzchar(split_label)) "Dataset" else split_label
   return(summary_stats)
 }
 

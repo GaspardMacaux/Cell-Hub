@@ -4844,7 +4844,7 @@ multiple_datasets_server <- function(input, output, session) {
     req(res, length(res$genes_analyzed) >= 2)
     group_by <- input$coexpr_group_by_multiple %||% "dataset"
     secondary_split <- if (identical(group_by, "dataset")) input$coexpr_secondary_split_multiple_alt %||% "none" else input$coexpr_secondary_split_multiple %||% "none"
-    create_coexpression_plot(res$data, res$genes_analyzed, group_by = group_by, secondary_split = secondary_split, plot_type = input$coexpr_plot_type_multiple %||% "bar")
+    create_coexpression_plot(res$data, res$genes_analyzed, group_by = group_by, secondary_split = secondary_split, plot_type = input$coexpr_plot_type_multiple %||% "bar", split_label = res$split_label %||% "Dataset")
   })
 
   # Background clusters for the ambient-RNA threshold estimate (same identities as the DE cluster selector)
@@ -4907,39 +4907,36 @@ multiple_datasets_server <- function(input, output, session) {
         showNotification("Co-expression needs at least 2 different genes found in the dataset.", type = "error", duration = 8)
         return()
       }
-      
-      # Subset to selected groups if specified
-      groupby_col <- input$coexpr_groupby_col_merge
+      # Split column: second level of the table and plot breakdown, and column used by the "Keep only" filter
+      split_col <- input$coexpr_groupby_col_merge
+      if (is.null(split_col) || !nzchar(split_col) || !split_col %in% colnames(seurat_obj@meta.data)) {
+        showNotification("Choose a metadata column in 'Split by column'.", type = "error", duration = 8)
+        return()
+      }
+      # Optional restriction to some values of the split column
       filter_groups <- input$coexpr_filter_groups_merge
-      if (!is.null(filter_groups) && length(filter_groups) > 0 &&
-          !is.null(groupby_col) && nzchar(groupby_col) &&
-          groupby_col %in% colnames(seurat_obj@meta.data)) {
-        cells_to_keep <- colnames(seurat_obj)[as.character(seurat_obj@meta.data[[groupby_col]]) %in% filter_groups]
+      if (length(filter_groups) > 0) {
+        cells_to_keep <- colnames(seurat_obj)[as.character(seurat_obj@meta.data[[split_col]]) %in% filter_groups]
         if (length(cells_to_keep) == 0) {
-          showNotification("No cells found for the selected groups!", type = "error")
+          showNotification("No cells found for the selected values!", type = "error")
           return()
         }
         seurat_obj <- subset(seurat_obj, cells = cells_to_keep)
-        message(paste0("Co-expression restricted to ", groupby_col, " [",
-                       paste(filter_groups, collapse = ", "), "] — ",
-                       ncol(seurat_obj), " cells"))
+        message(paste0("Co-expression restricted to ", split_col, " [", paste(filter_groups, collapse = ", "), "] — ", ncol(seurat_obj), " cells"))
       }
-      
       coexpr_results <- analyze_gene_coexpression(
         seurat_obj            = seurat_obj,
         genes                 = genes_input,
         assay_name            = input$coexpr_assay_multiple %||% "RNA",
         expression_thresholds = thresholds,
         is_integrated         = TRUE,
-        threshold_layer       = input$coexpr_threshold_unit_multiple %||% "counts"
+        threshold_layer       = input$coexpr_threshold_unit_multiple %||% "counts",
+        split_col             = split_col
       )
-      
       gene_coexpression_data_multiple(coexpr_results)
-      
-      showNotification("Co-expression analysis completed", type = "message")
-      
+      showNotification(paste0("Co-expression analysis completed (split by ", split_col, ")"), type = "message")
     }, error = function(e) {
-      showNotification(paste("Comparison error:", conditionMessage(e)[1]), type = "error")
+      showNotification(paste("Co-expression error:", conditionMessage(e)[1]), type = "error")
       message("Co-expression error details: ", conditionMessage(e)[1])
     })
   })
@@ -5077,7 +5074,7 @@ multiple_datasets_server <- function(input, output, session) {
   # Render summary statistics using modular approach
   output$coexpression_summary_stats_multiple <- renderTable({
     req(gene_coexpression_data_multiple())
-    create_coexpression_summary_stats(gene_coexpression_data_multiple()$data, gene_coexpression_data_multiple()$genes_analyzed)
+    create_coexpression_summary_stats(gene_coexpression_data_multiple()$data, gene_coexpression_data_multiple()$genes_analyzed, split_label = gene_coexpression_data_multiple()$split_label %||% "Dataset")
   }, striped = TRUE, hover = TRUE, spacing = 'l')
 
   output$coexpr_de_table_multiple <- renderDT({
