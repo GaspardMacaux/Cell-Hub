@@ -28,7 +28,7 @@ validate_cellchat_object <- function(cellchat_obj, min_groups = 2, check_db = TR
     errors <- c(errors, "No expression data found in object")
   }
   return(list(valid = length(errors) == 0, errors = errors, n_groups = n_groups))
-  
+
 }
 
 # Clean CellChat factors to avoid issues with unused levels
@@ -181,10 +181,42 @@ validate_for_plotting <- function(cellchat_obj, check_analysis = TRUE) {
   return(list(valid = TRUE, message = "OK"))
 }
 
+# Keep the size (p-value) and colour legends of a netVisual_bubble plot whole after rows of plot$data are removed:
+# their breaks and labels are fixed vectors computed on all interactions, and ggplot drops breaks outside the remaining
+# data range, which leaves more labels than breaks ("breaks and labels have different lengths"). The limits are set to the
+# range of the original breaks, so every legend class stays shown, as in the unfiltered plot.
+keep_bubble_legend_scales <- function(plot) {
+  for (aesthetic in c("size", "colour")) {
+    sc <- plot$scales$get_scales(aesthetic)
+    if (!is.null(sc) && is.null(sc$limits) && is.numeric(sc$breaks) && length(sc$breaks) > 0) {
+      sc <- sc$clone()
+      sc$limits <- range(sc$breaks, na.rm = TRUE)
+      plot <- suppressMessages(plot + sc)
+    }
+  }
+  plot
+}
+
+# Grid lines of a netVisual_bubble plot (one between each LR pair and each source -> target column) are computed by
+# CellChat on all interactions; after rows of plot$data are removed they would leave empty rows and columns.
+# They are removed and redrawn on the remaining pairs and columns, after the points as in netVisual_bubble.
+refresh_bubble_grid <- function(plot) {
+  is_grid <- vapply(plot$layers, function(l) inherits(l$geom, "GeomHline") || inherits(l$geom, "GeomVline"), logical(1))
+  if (!any(is_grid)) return(plot)
+  first <- plot$layers[[which(is_grid)[1]]]$aes_params
+  grid_col <- if (is.null(first$colour)) "grey90" else first$colour
+  grid_lwd <- if (!is.null(first$linewidth)) first$linewidth else if (!is.null(first$size)) first$size else 0.1
+  plot$layers <- plot$layers[!is_grid]
+  n_x <- length(unique(plot$data$source.target)); n_y <- length(unique(plot$data$interaction_name_2))
+  if (n_x > 1) plot <- plot + geom_vline(xintercept = seq(1.5, n_x - 0.5, 1), linewidth = grid_lwd, colour = grid_col)
+  if (n_y > 1) plot <- plot + geom_hline(yintercept = seq(1.5, n_y - 0.5, 1), linewidth = grid_lwd, colour = grid_col)
+  plot
+}
+
 ## Group: Generate bubble plot; exclude_intra removes autocrine pairs (source == target) from the plot and the returned table
 generate_bubble_plot <- function(cellchat_obj, sources, targets, threshold = 0.05,
                                  flip_axes = FALSE, exclude_intra = FALSE,
-                                 signaling = NULL) {
+                                 signaling = NULL, genes = NULL) {
   validation <- validate_for_plotting(cellchat_obj, check_analysis = TRUE)
   if (!validation$valid) stop(validation$message)
   if (length(sources) == 0 || length(targets) == 0) stop("Please select at least one source and one target cell type")
@@ -195,7 +227,15 @@ generate_bubble_plot <- function(cellchat_obj, sources, targets, threshold = 0.0
   if (is.null(communications) || nrow(communications) == 0) {
     stop(if (isTRUE(exclude_intra)) "No interaction between different cell groups with current parameters" else "No interactions found with current parameters")
   }
-  # signaling= is the correct parameter in CellChat 1.6.1; pairLR.use is broken
+  # Optional gene list: keeps the significant interactions whose ligand or receptor (or a complex subunit) is in the list.
+  # Applied after inference, so probabilities and p-values are those computed on the whole database
+  gene_match <- NULL
+  if (length(genes) > 0) {
+    gene_match <- match_interactions_to_genes(communications, cellchat_obj@DB$complex, genes)
+    if (!any(gene_match$keep)) stop(sprintf("None of the %d genes of the list is in a significant interaction with current parameters", length(genes)))
+    communications <- communications[gene_match$keep, , drop = FALSE]
+  }
+  # signaling= is used instead of pairLR.use (broken in CellChat 1.6.1, not re-tested on 2.1.2)
   plot <- netVisual_bubble(object = cellchat_obj, sources.use = sources, targets.use = targets, signaling = signaling,
                            thresh = threshold, angle.x = 45, font.size = 10)
   if (isTRUE(exclude_intra)) {
@@ -208,9 +248,24 @@ generate_bubble_plot <- function(cellchat_obj, sources, targets, threshold = 0.0
       warning("netVisual_bubble data has no 'source.target' column: intra-group interactions could not be removed from the plot")
     }
   }
+  if (!is.null(gene_match)) {
+    # Plot rows restricted to the interactions kept by the gene list (same approach as exclude_intra)
+    if ("interaction_name" %in% colnames(plot$data)) {
+      plot$data <- plot$data[as.character(plot$data$interaction_name) %in% as.character(communications$interaction_name), , drop = FALSE]
+    } else if ("interaction_name_2" %in% colnames(plot$data) && "interaction_name_2" %in% colnames(communications)) {
+      plot$data <- plot$data[trimws(as.character(plot$data$interaction_name_2)) %in% trimws(as.character(communications$interaction_name_2)), , drop = FALSE]
+    } else {
+      stop("netVisual_bubble data has no interaction name column: the gene list could not be applied to the plot")
+    }
+    if (nrow(plot$data) == 0) stop("No plotted interaction left after applying the gene list")
+    if (is.factor(plot$data$interaction_name_2)) plot$data$interaction_name_2 <- droplevels(plot$data$interaction_name_2)
+  }
+  # Rows removed from plot$data: legends rebuilt on the original classes so breaks and labels stay paired
+  if (isTRUE(exclude_intra) || !is.null(gene_match)) plot <- refresh_bubble_grid(keep_bubble_legend_scales(plot))
   if (flip_axes) plot <- plot + coord_flip()
   plot <- plot + theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 10), axis.text.y = element_text(size = 10))
-  return(list(plot = plot, communications = communications, n_interactions = nrow(communications)))
+  return(list(plot = plot, communications = communications, n_interactions = nrow(communications),
+              genes_absent = if (is.null(gene_match)) character(0) else gene_match$genes_absent))
 }
 
 # Generate gene-level chord plot (circlize-based).
@@ -218,8 +273,10 @@ generate_bubble_plot <- function(cellchat_obj, sources, targets, threshold = 0.0
 # handling corrupts renderPlot() (rule 8), so the server displays the file with renderImage().
 # plot_function is also returned so download handlers can redraw on their own device.
 # threshold is a p-value cutoff; top_n keeps the strongest interactions by communication probability (0 = all).
+# genes (optional): keeps the significant interactions whose ligand or receptor (or a complex subunit) is in the list,
+# before top_n, so the top interactions are chosen among those of the list; applied after inference.
 generate_chord_plot <- function(cellchat_obj, senders, receivers, threshold = 0.05, top_n = 0,
-                                custom_colors = NULL, label_size = 0.8, plot_size = 1200) {
+                                custom_colors = NULL, label_size = 0.8, plot_size = 1200, genes = NULL) {
   validation <- validate_for_plotting(cellchat_obj, check_analysis = TRUE)
   if (!validation$valid) stop(validation$message)
   if (length(senders) == 0 || length(receivers) == 0) stop("Please select sender and receiver groups")
@@ -230,6 +287,14 @@ generate_chord_plot <- function(cellchat_obj, senders, receivers, threshold = 0.
   n_significant <- if (!is.null(communications)) nrow(communications) else 0
   if (n_significant == 0) stop("No interactions found with current parameters")
   chord_net <- as.data.frame(communications)
+  # Optional gene list, applied to the significant interactions before the top-n selection
+  gene_match <- NULL
+  if (length(genes) > 0) {
+    gene_match <- match_interactions_to_genes(chord_net, cellchat_obj@DB$complex, genes)
+    if (!any(gene_match$keep)) stop(sprintf("None of the %d genes of the list is in a significant interaction with current parameters", length(genes)))
+    chord_net <- chord_net[gene_match$keep, , drop = FALSE]
+  }
+  n_matching <- nrow(chord_net)
   # Permutation p-values are often 0 for every significant pair, so the strength (prob) is what reduces the plot
   if (is.numeric(top_n) && !is.na(top_n) && top_n > 0 && top_n < nrow(chord_net)) {
     chord_net <- chord_net[order(chord_net$prob, decreasing = TRUE), , drop = FALSE][seq_len(top_n), , drop = FALSE]
@@ -247,7 +312,8 @@ generate_chord_plot <- function(cellchat_obj, senders, receivers, threshold = 0.
   n_sectors <- nrow(unique(chord_net[, c("ligand", "source")])) + nrow(unique(chord_net[, c("receptor", "target")]))
   n_groups <- length(unique(c(as.character(chord_net$source), as.character(chord_net$target))))
   small_gap <- max(0.05, min(3, (360 * 0.35 - n_groups * big_gap) / n_sectors))
-  message(sprintf("Chord plot: %d of %d significant interactions, %d sectors, small gap %.2f degrees", n_interactions, n_significant, n_sectors, small_gap))
+  message(sprintf("Chord plot: %d of %d significant interactions (%d matching the gene list), %d sectors, small gap %.2f degrees",
+                  n_interactions, n_significant, n_matching, n_sectors, small_gap))
   # Draws on whatever device is currently open; circos state is reset before and after
   plot_function <- function() {
     circlize::circos.clear()
@@ -287,13 +353,11 @@ generate_chord_plot <- function(cellchat_obj, senders, receivers, threshold = 0.
     output_path    = output_path,
     png_size       = plot_size,
     n_interactions = n_interactions,
-    n_significant  = n_significant
+    n_significant  = n_significant,
+    n_matching     = n_matching,
+    genes_absent   = if (is.null(gene_match)) character(0) else gene_match$genes_absent
   ))
 }
-
-
-
-
 
 # Get interaction type information
 get_interaction_type_info <- function(cellchat_obj, communications) {

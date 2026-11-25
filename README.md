@@ -17,6 +17,10 @@ docker run -p 3838:3838 gaspardmacaux/cell-hub:2.0.0
 
 Open http://localhost:3838 in your browser. Large datasets need memory: raise the memory limit of Docker Desktop (Settings → Resources) if the analysis stops.
 
+Memory needed, measured on subsets of the 10x 1.3 million mouse brain cells dataset (Supplementary Data 2 of the article): about 16 GB for a sample of 10,000 cells, 32 GB for a single-sample analysis of 100,000 cells, 48 GB to integrate 100,000 cells and 80 GB for 200,000 cells (peak 64 GB). DoubletFinder is the most demanding step (60 GB for 50,000 cells) and is run sample by sample.
+
+The image used in the Cell-Hub article is `gaspardmacaux/cell-hub:2.0.0`, digest `sha256:08c10cbbbcb8078f9e3fb989fcff440384235c6755016f1ff9af9e978114af74`; to be sure to get exactly this image, pull it by digest: `docker pull gaspardmacaux/cell-hub@sha256:08c10cbbbcb8078f9e3fb989fcff440384235c6755016f1ff9af9e978114af74`.
+
 The image contains the application, every R package at a fixed version and CellHub Database 2.1.2. The source code of the image is in [`Code/`](Code) and its build recipe in [`docker/`](docker).
 
 ### Package versions in `gaspardmacaux/cell-hub:2.0.0`
@@ -58,13 +62,15 @@ Every stochastic step (PCA, neighbours, clustering, UMAP, Harmony, CellChat perm
 - **Co-expression**: cells co-expressing several genes, per cluster, with differential expression of co-expressing vs non-co-expressing cells
 
 ### Multi-dataset integration
-- **Methods**: Seurat CCA anchors, fastMNN, Harmony, or a simple merge without batch correction
+- **Methods**: Seurat CCA anchors, Seurat reciprocal PCA (RPCA), fastMNN, Harmony, or a simple merge without batch correction
 - **Metadata**: assign any experimental variable (condition, genotype, time point) to each dataset
 - **Comparisons**: every visualization split by any metadata variable; cluster composition across conditions
 
 ### Cell-cell communication
 - **Inference**: CellChat 2 with [CellHub Database](https://github.com/GaspardMacaux/CellHub-Database) (76,582 interactions, 21 species, 10 source databases)
-- **Confidence tiers**: high (2 or more curated sources), medium (1 curated source; for human and mouse, optionally restricted to confirmed ligand / receptor roles), low (orthology-inferred or predicted only)
+- **Confidence tiers**: high (2 or more curated sources), medium (1 curated source; for human and mouse, optionally restricted to confirmed ligand / receptor roles), low (only orthology-inferred, predicted or computationally aggregated support, such as NicheNet v2); high + medium by default for human and mouse
+- **Database selection**: merged database or chosen source databases, filtered by confidence tier
+- **Gene lists**: named lists of genes of interest, to list their interactions in the database and to restrict bubble and chord plots to them
 - **Visualization**: bubble plots, gene-level chord diagrams, split chord diagrams to compare conditions
 
 ### Trajectory inference
@@ -87,7 +93,7 @@ Every stochastic step (PCA, neighbours, clustering, UMAP, Harmony, CellChat perm
 
 ## CellHub Database
 
-Cell-Hub includes [CellHub Database 2.1.2](https://github.com/GaspardMacaux/CellHub-Database), a ligand-receptor resource integrating 10 curated databases into 76,582 interactions across 21 species, in CellChat format. The release, its build pipeline and the per-species files are described in the CellHub-Database repository and archived on Zenodo ([doi:10.5281/zenodo.24197571](https://doi.org/10.5281/zenodo.24197571), all versions).
+Cell-Hub includes [CellHub Database 2.1.2](https://github.com/GaspardMacaux/CellHub-Database), a ligand-receptor resource integrating 10 curated databases into 76,582 interactions across 21 species, in CellChat format. The release, its build pipeline and the per-species files are described in the CellHub-Database repository and archived on Zenodo ([doi:10.5281/zenodo.24197570](https://doi.org/10.5281/zenodo.24197570), all versions; always resolves to the latest).
 
 | Source | Species | Reference |
 |---|---|---|
@@ -109,13 +115,16 @@ To run the code outside Docker, place the per-species folders of the release (`a
 ## Repository layout
 
 ```
-Code/        application, exactly as installed in the Docker image (app.R, *_server_docker.R, functions/, www/)
+Code/        application source (app.R, *_server.R, functions/, www/)
 docker/      Dockerfile and R profile used to build the image
+tests/       test suites run on every image before release (interface, functional, database)
 ```
+
+In the image, the same files are installed with a `_docker` suffix (for example `functions/spatial_functions.R` becomes `functions/spatial_functions_docker.R`); their content is identical, except `main_server_docker.R`, which sets the paths used inside the container. To inspect exactly what runs in a given image, open it by digest (`docker run --rm -it --entrypoint bash gaspardmacaux/cell-hub@sha256:...`, files in `/srv/shiny-server/mon_app`).
 
 The Dockerfile documents how the image was built (base image, system libraries, package versions, installation order). It also copies local package sources (`CellHub.tar.gz`, `monocle3`, `seurat-wrappers`, `seurat-disk`) that are not in this repository, so use the published image rather than rebuilding it.
 
-The `_docker` suffix of the file names is the one used in the image: the files here are the files that run in `gaspardmacaux/cell-hub:2.0.0`.
+`tests/run_cellhub_tests.sh` runs the three suites on an image with the demonstration data (doi:10.5281/zenodo.24198709): `bash tests/run_cellhub_tests.sh gaspardmacaux/cell-hub:2.0.0 /path/to/cellhub_demo_data`. It writes an HTML report with every step, screenshot and download.
 
 ---
 

@@ -35,7 +35,7 @@ cellchat_server <- function(input, output, session) {
     all_logs(c(current_logs, new_logs))
   }
   
-  
+ 
   ############################## Load Seurat Object ##############################
   # One upload for every Cell-Hub RDS: a Seurat object, a saved analysis (Seurat + CellChat objects),
   # a legacy list of CellChat objects or a single CellChat object
@@ -159,7 +159,7 @@ cellchat_server <- function(input, output, session) {
     })
   }))
   
-  
+ 
   ############################## Load Database ##############################
   # Update available database checkboxes and the recommended confidence tiers when species changes
   observeEvent(input$species_cellchat, run_safely("species cellchat", {
@@ -177,10 +177,10 @@ cellchat_server <- function(input, output, session) {
     source_files <- list.files(sp_dir, pattern = "CellHubDB_.*\\.rds$")
     source_files <- source_files[!grepl("_merged\\.rds$", source_files)]
     source_names <- sub("\\.rds$", "", sub(paste0("CellHubDB_", sp, "_"), "", source_files))
-    # Checkbox labels with the number of interactions of each source
+    # Checkbox labels: display name of the source and number of interactions; values stay the file labels
     choices <- setNames(source_names, sapply(source_names, function(src) {
       db <- readRDS(file.path(sp_dir, paste0("CellHubDB_", sp, "_", src, ".rds")))
-      paste0(src, " (", nrow(db$interaction), ")")
+      paste0(cellhubdb_source_label(src), " (", nrow(db$interaction), ")")
     }))
     updateCheckboxGroupInput(session, "db_sources_cellchat", choices = choices, selected = choices)
   }), ignoreInit = FALSE)
@@ -218,7 +218,7 @@ cellchat_server <- function(input, output, session) {
         CellHubDB <- readRDS(merged_path)
         logs <- c(logs, paste("Loaded merged CellHub Database for", sp))
         all_sources <- unique(unlist(strsplit(CellHubDB$interaction$sources, ", ")))
-        logs <- c(logs, paste("Sources:", paste(sort(all_sources), collapse = ", ")))
+        logs <- c(logs, paste("Sources:", paste(cellhubdb_source_label(sort(all_sources)), collapse = ", ")))
         CellHubDB$interaction <- annotate_cellhubdb_tier(CellHubDB$interaction)
       } else {
         # Load and merge selected individual sources
@@ -293,6 +293,85 @@ cellchat_server <- function(input, output, session) {
     cat(paste(all_logs(), collapse = "\n"))
   })
   
+  ############################## Genes of interest (named gene lists) ##############################
+  gene_lists_cellchat <- reactiveVal(list())
+  gene_query_result <- reactiveVal(NULL)
+  # A newly loaded (or unloaded) database invalidates the previous query
+  observeEvent(db_cellchat(), gene_query_result(NULL), ignoreNULL = FALSE)
+  
+  # Genes of the list chosen in a plot selector ("" = no list)
+  selected_gene_list <- function(name) {
+    if (is.null(name) || !nzchar(name)) return(character(0))
+    genes <- gene_lists_cellchat()[[name]]
+    if (is.null(genes)) stop("Gene list not found: ", name)
+    genes
+  }
+  
+  # Plot selectors follow the saved lists and keep their choice while it still exists
+  observe(run_safely("Gene list selectors", persistent = FALSE, {
+    choices <- gene_list_choices(gene_lists_cellchat())
+    for (id in c("bubble_gene_list_cellchat", "chord_gene_list_cellchat")) {
+      current <- isolate(input[[id]])
+      updateSelectInput(session, id, choices = choices, selected = if (!is.null(current) && current %in% choices) current else "")
+    }
+  }))
+  
+  # Add or replace a named gene list; the fields are kept so that the list can be edited and added again under the same name
+  observeEvent(input$add_gene_list_cellchat, run_safely("add gene list", {
+    if (is.null(input$gene_list_name_cellchat) || !nzchar(trimws(input$gene_list_name_cellchat))) {
+      stop("Type a name in 'List name' before clicking 'Add list' (an existing name replaces that list)")
+    }
+    res <- add_gene_list(gene_lists_cellchat(), input$gene_list_name_cellchat, input$gene_list_text_cellchat)
+    gene_lists_cellchat(res$lists)
+    updateSelectInput(session, "gene_list_selected_cellchat", choices = gene_list_choices(res$lists, none_label = NULL), selected = res$name)
+    showNotification(sprintf("%s gene list '%s': %d genes", if (res$replaced) "Replaced" else "Added", res$name, length(res$genes)), type = "message")
+  }))
+  
+  observeEvent(input$delete_gene_list_cellchat, run_safely("delete gene list", {
+    name <- input$gene_list_selected_cellchat
+    if (is.null(name) || !nzchar(name)) stop("Select a list to delete")
+    lists <- gene_lists_cellchat()
+    lists[[name]] <- NULL
+    gene_lists_cellchat(lists)
+    updateSelectInput(session, "gene_list_selected_cellchat", choices = gene_list_choices(lists, none_label = NULL))
+    showNotification(sprintf("Gene list '%s' deleted", name), type = "message")
+  }))
+  
+  output$gene_lists_table_cellchat <- renderTable({
+    lists <- gene_lists_cellchat()
+    req(length(lists) > 0)
+    gene_lists_table(lists)
+  }, striped = TRUE, spacing = "xs", width = "100%")
+  
+  observeEvent(input$run_gene_query_cellchat, run_safely("gene query cellchat", {
+    db <- db_cellchat()
+    if (is.null(db) || !isTRUE(db_loaded())) stop("Load a database first: the query searches the loaded database, with its confidence tiers")
+    name <- input$gene_list_selected_cellchat
+    if (is.null(name) || !nzchar(name)) stop("Add a gene list first, then select it")
+    res <- query_cellhubdb_genes(db, selected_gene_list(name))
+    res$list_name <- name
+    gene_query_result(res)
+    msg <- sprintf("%s: %d of %d genes found in %d of %d interactions", name, length(res$genes_found), res$n_genes, nrow(res$table), res$n_db)
+    if (length(res$genes_absent) > 0) msg <- paste0(msg, ". Not in the loaded database: ", paste(head(res$genes_absent, 20), collapse = ", "), if (length(res$genes_absent) > 20) ", ..." else "")
+    showNotification(msg, type = if (nrow(res$table) == 0) "warning" else "message", duration = 8)
+  }))
+  
+  output$gene_query_summary_cellchat <- renderText({
+    res <- gene_query_result(); req(res)
+    sprintf("%s: %d of %d genes found | %d interactions of the loaded database (%d in total)%s", res$list_name, length(res$genes_found), res$n_genes, nrow(res$table), res$n_db,
+            if (length(res$genes_absent) > 0) paste0(" | not found: ", paste(head(res$genes_absent, 20), collapse = ", "), if (length(res$genes_absent) > 20) ", ..." else "") else "")
+  })
+  
+  # Client-side table so that the CSV / Excel buttons export every row, not only the visible page
+  output$gene_query_table_cellchat <- DT::renderDataTable({
+    res <- gene_query_result(); req(res, nrow(res$table) > 0)
+    file_stub <- paste0("CellHubDB_gene_query_", gsub("[^A-Za-z0-9]+", "_", res$list_name), "_", input$species_cellchat, "_", format(Sys.Date(), "%Y%m%d"))
+    DT::datatable(res$table, rownames = FALSE, selection = "none", extensions = "Buttons",
+                  options = list(pageLength = 25, dom = "Bfrtip", scrollX = TRUE,
+                                 buttons = list(list(extend = "csv", filename = file_stub, text = "CSV"),
+                                                list(extend = "excel", filename = file_stub, text = "Excel"))))
+  }, server = FALSE)
+  
   # Helper functions
   print_seurat_info <- function(seurat_obj) {
     # Use proper methods for Seurat object
@@ -318,8 +397,9 @@ cellchat_server <- function(input, output, session) {
     inter <- db$interaction
     n_interactions <- nrow(inter)
     n_pathways <- length(unique(inter$pathway_name[!is.na(inter$pathway_name)]))
-    # Individual source names (the sources column lists every source of a pair, comma-separated)
+    # Individual source names (the sources column lists every source of a pair, comma-separated), shown with their display names
     source_names <- if ("sources" %in% colnames(inter)) sort(unique(unlist(strsplit(inter$sources[!is.na(inter$sources)], "\\s*,\\s*")))) else character(0)
+    source_labels <- cellhubdb_source_label(source_names)
     # Count by interaction type
     type_counts <- table(inter$interaction_type, useNA = "no")
     type_str <- paste(names(type_counts), type_counts, sep = ": ", collapse = " | ")
@@ -329,14 +409,13 @@ cellchat_server <- function(input, output, session) {
     paste0(
       "CellHub Database loaded:",
       sprintf("\n  Interactions: %d", n_interactions),
-      sprintf("\n  Sources: %d (%s)", length(source_names), paste(source_names, collapse = ", ")),
+      sprintf("\n  Sources: %d (%s)", length(source_labels), paste(source_labels, collapse = ", ")),
       sprintf("\n  Pathways: %d", n_pathways),
       if (nchar(type_str) > 0) sprintf("\n  Types: %s", type_str) else "",
       if (n_multi > 0) sprintf("\n  Cross-validated (multi-source): %d (%.0f%%)", n_multi, 100 * n_multi / n_interactions) else "",
       if (!is.null(tier_counts)) sprintf("\n  Confidence tiers: %s", paste(names(tier_counts), tier_counts, collapse = " | ")) else ""
     )
   }
-  
   
   ###################### TAB 2 ###################
   
@@ -406,7 +485,7 @@ cellchat_server <- function(input, output, session) {
       updateSelectInput(session, "combine_with_column", choices = c("None" = "", filtered_cols), selected = "")
       updateSelectInput(session, "combine_with_column_2", choices = c("None" = "", filtered_cols), selected = "")
       updateSelectInput(session, "condition_filter_column", choices = c("None" = "", filtered_cols), selected = "")
-      
+
     }, error = function(e) {
       showNotification(paste("Error updating column choices:", conditionMessage(e)[1]), type = "warning", duration = 10)
     })
@@ -467,7 +546,7 @@ cellchat_server <- function(input, output, session) {
   
   
   
-  
+ 
   output$condition_values_ui <- renderUI({
     req(seurat_object_cellchat())
     
@@ -517,13 +596,19 @@ cellchat_server <- function(input, output, session) {
       return(tags$p(paste("Error:", e$message), style = "color: red; font-size: 12px;"))
     })
   })
-  
-  
-  
-  
+
+ 
+ 
+
   # Create and analyze CellChat object
   observeEvent(input$create_and_analyze_cellchat, {
     tryCatch({
+      # No dataset loaded (or the import failed): stop before any other check, with a message the user can act on
+      if (is.null(seurat_object_cellchat())) {
+        showNotification("No dataset loaded: import a Seurat object in the 'Load data' tab first.", type = "error", duration = 10)
+        return()
+      }
+      
       # Collect selected columns for grouping
       grouping_columns <- c(input$group_by_cellchat)
       
@@ -673,7 +758,7 @@ cellchat_server <- function(input, output, session) {
   }))
   
   
-  
+ 
   # Fill the object selectors of the visualization tabs
   observe(run_safely("Interface update", persistent = FALSE, {
     req(cellchat_objects())
@@ -714,7 +799,7 @@ cellchat_server <- function(input, output, session) {
   # Reactive value for plot
   bubble_plot <- reactiveVal()
   
-  # Generate bubble plot 
+  # Generate bubble plot (optionally restricted to a gene list, applied after inference)
   observeEvent(input$generate_plot_cellchat, run_safely("generate plot cellchat", {
     req(input$subset_choose_cellchat)
     
@@ -722,6 +807,7 @@ cellchat_server <- function(input, output, session) {
     
     tryCatch({
       cellchat_obj <- cellchat_objects()[[input$subset_choose_cellchat]]
+      genes <- selected_gene_list(input$bubble_gene_list_cellchat)
       
       # Generate plot using helper
       result <- generate_bubble_plot(
@@ -731,7 +817,8 @@ cellchat_server <- function(input, output, session) {
         threshold = input$threshold_cellchat,
         flip_axes = input$flip_axes,
         exclude_intra = input$exclude_intra,
-        signaling = NULL  # character vector of pathway names, e.g. c("MHC-II", "CXCL")
+        signaling = NULL,  # character vector of pathway names, e.g. c("MHC-II", "CXCL")
+        genes = genes
       )
       # Get interaction type info
       interaction_info <- get_interaction_type_info(cellchat_obj, result$communications)
@@ -741,6 +828,13 @@ cellchat_server <- function(input, output, session) {
         plot = result$plot,
         interaction_info = interaction_info
       ))
+      
+      # Genes of the list absent from the significant interactions
+      if (length(result$genes_absent) > 0) {
+        showNotification(paste0(length(result$genes_absent), " of ", length(genes), " genes in no significant interaction: ",
+                                paste(head(result$genes_absent, 20), collapse = ", "), if (length(result$genes_absent) > 20) ", ..." else ""),
+                         type = "warning", duration = 8)
+      }
       
       # Notification
       if (!is.null(interaction_info) && "interaction_type" %in% colnames(interaction_info)) {
@@ -762,7 +856,6 @@ cellchat_server <- function(input, output, session) {
       showNotification(paste("Error:", e$message), type = "error")
     })
   }))
-  
   
   # Render the plot without infinite refresh
   output$bubble_plot_cellchat <- renderPlot({
@@ -820,7 +913,7 @@ cellchat_server <- function(input, output, session) {
     download_type = "csv"
   )
   
-  
+ 
   
   # Reactive value pour stocker le plot
   chord_plot <- reactiveVal()
@@ -893,6 +986,7 @@ cellchat_server <- function(input, output, session) {
       return(NULL)
     })
   })
+  
   observeEvent(input$generate_chord_plot, run_safely("generate chord plot", {
     req(input$cellchat_obj_chord)
     req(length(input$sender_groups) > 0)
@@ -902,6 +996,7 @@ cellchat_server <- function(input, output, session) {
     
     tryCatch({
       cellchat_obj <- cellchat_objects()[[input$cellchat_obj_chord]]
+      genes <- selected_gene_list(input$chord_gene_list_cellchat)
       
       custom_colors <- NULL
       if (isTRUE(input$use_custom_colors)) {
@@ -933,16 +1028,24 @@ cellchat_server <- function(input, output, session) {
         top_n         = input$chord_top_n %||% 0,
         custom_colors = custom_colors,
         label_size    = input$chord_label_size,
-        plot_size     = png_size
+        plot_size     = png_size,
+        genes         = genes
       )
       
       # Delete the previous temporary PNG before replacing it
       previous <- chord_plot()
       if (!is.null(previous) && !is.null(previous$output_path) && file.exists(previous$output_path)) unlink(previous$output_path)
       chord_plot(result)
+      # Genes of the list absent from the significant interactions
+      if (length(result$genes_absent) > 0) {
+        showNotification(paste0(length(result$genes_absent), " of ", length(genes), " genes in no significant interaction: ",
+                                paste(head(result$genes_absent, 20), collapse = ", "), if (length(result$genes_absent) > 20) ", ..." else ""),
+                         type = "warning", duration = 8)
+      }
       showNotification(
         paste("Chord plot generated with", result$n_interactions, "interactions",
-              if (result$n_interactions < result$n_significant) paste0("(top ", result$n_interactions, " of ", result$n_significant, " significant)") else ""),
+              if (length(genes) > 0) paste0("(", result$n_matching, " of ", result$n_significant, " significant match the gene list)") else "",
+              if (result$n_interactions < result$n_matching) paste0("(top ", result$n_interactions, " of ", result$n_matching, ")") else ""),
         type = "message"
       )
     }, error = function(e) {
@@ -1298,7 +1401,7 @@ cellchat_server <- function(input, output, session) {
     
     do.call(tagList, Filter(Negate(is.null), ui_parts))
   })
-  
+    
   # Last known state of each "Include all" checkbox, so only the box that changed updates its own selector
   split_chord_checkbox_state <- new.env(parent = emptyenv())
   observe(run_safely("Interface update", persistent = FALSE, {

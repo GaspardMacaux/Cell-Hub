@@ -27,7 +27,7 @@ example_data_box <- function(module, collapsed = FALSE) {
                     tags$li("Download ", file_tag("pbmc_v3"), " from ", record, " and load it above as raw data (species: human)."),
                     tags$li("1,000 human blood cells: QC, clustering, markers and annotation (SingleR) run in a few minutes.")),
                   multiple = tagList(
-                    tags$li("Download ", file_tag("pbmc_v2"), " and ", file_tag("pbmc_v3"), " from ", record, " and load them as two datasets (type scRNA-seq, species human)."),
+                    tags$li("Download ", file_tag("pbmc_v2"), " and ", file_tag("pbmc_v3"), " from ", record, " and load them as two datasets (type snRNA-seq, which also applies to single-cell data; species human)."),
                     tags$li("The same donor sequenced with two chemistries forms a technical batch: compare CCA, Harmony, fastMNN and simple merge.")),
                   cellchat = tagList(
                     tags$li("Process ", file_tag("pbmc_v3"), " (", record, ") in Single Dataset Analysis up to annotation, then use ", tags$em("Use current object"), " (species: human).")),

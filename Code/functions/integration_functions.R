@@ -358,15 +358,18 @@ processDatasetsForIntegration <- function(file_inputs, dataset_types, dataset_na
 
 performDataIntegration <- function(seurat_list, integration_method = "standard", 
                                    harmony_vars = NULL, harmony_dims = NULL,
-                                   mnn_dims = NULL, mnn_k = NULL) {
+                                   mnn_dims = NULL, mnn_k = NULL,
+                                   rpca_dims = NULL, rpca_k_anchor = NULL) {
   # Perform data integration using specified method
   # Args:
   #   seurat_list: List of preprocessed Seurat objects
-  #   integration_method: "standard", "harmony", "fastmnn", or "simple"
+  #   integration_method: "standard", "harmony", "fastmnn", "rpca", or "simple"
   #   harmony_vars: Variables to correct for with Harmony (optional)
   #   harmony_dims: Number of dimensions for Harmony (optional)
   #   mnn_dims: Number of corrected dimensions for fastMNN (optional, default 50)
   #   mnn_k: Number of MNN neighbors for fastMNN (optional, default 20)
+  #   rpca_dims: Number of PCs used by RPCA (optional, default 30)
+  #   rpca_k_anchor: Number of neighbors used to pick RPCA anchors (optional, default 5)
   # Returns:
   #   Integrated Seurat object
   
@@ -396,6 +399,11 @@ performDataIntegration <- function(seurat_list, integration_method = "standard",
                                      mnn_dims = mnn_dims,
                                      mnn_k = mnn_k))
     
+  } else if (integration_method == "rpca") {
+    if (is.null(rpca_dims)) rpca_dims <- 30
+    if (is.null(rpca_k_anchor)) rpca_k_anchor <- 5
+    return(performRPCAIntegration(seurat_list, rpca_dims = rpca_dims, k_anchor = rpca_k_anchor))
+    
   } else if (integration_method == "standard") {
     return(performStandardIntegration(seurat_list))
     
@@ -403,7 +411,6 @@ performDataIntegration <- function(seurat_list, integration_method = "standard",
     stop(paste("Unknown integration method:", integration_method))
   }
 }
-
 
 performStandardIntegration <- function(seurat_list) {
   # Perform standard Seurat integration workflow with v5 compatibility
@@ -486,13 +493,15 @@ performStandardIntegration <- function(seurat_list) {
 }
 
 
-performSimpleMerge <- function(seurat_list, dataset_names = NULL) {
+performSimpleMerge <- function(seurat_list, dataset_names = NULL, compute_reductions = TRUE) {
   # Perform simple merge without integration, preserving original clusters
   # Args:
   #   seurat_list: List of preprocessed Seurat objects (can be named list)
   #   dataset_names: Optional. If NULL, will auto-detect from objects or list names
+  #   compute_reductions: TRUE for the Simple merge button (normalization, PCA and UMAP of the merged object, shown directly);
+  #     FALSE when called by an integration method, which normalizes and reduces the merged object itself (avoids doing it twice)
   # Returns:
-  #   Merged Seurat object with preserved cluster and dataset information + reductions
+  #   Merged Seurat object with preserved cluster and dataset information (+ reductions when compute_reductions = TRUE)
   
   message("Starting simple merge without integration")
   
@@ -688,6 +697,13 @@ performSimpleMerge <- function(seurat_list, dataset_names = NULL) {
   
   message("===================================\n")
   
+  # Integration methods normalize, scale and reduce the merged object themselves: stop here for them
+  if (!isTRUE(compute_reductions)) {
+    DefaultAssay(merged_object) <- "RNA"
+    message("✓ Merged object returned without reductions (computed by the integration method)")
+    return(merged_object)
+  }
+  
   message("\n========== COMPUTING REDUCTIONS ==========")
   message("Running normalization pipeline...")
   
@@ -750,7 +766,7 @@ performHarmonyIntegration <- function(seurat_list, harmony_vars = "dataset",
   message(paste("Starting Harmony with", n_datasets, "datasets"))
   gc()
   message("Step 1/3: Merging datasets")
-  merged_object <- performSimpleMerge(seurat_list)
+  merged_object <- performSimpleMerge(seurat_list, compute_reductions = FALSE)
   rm(seurat_list)
   gc()
   message("Step 2/3: Normalizing and preprocessing")
@@ -1126,7 +1142,7 @@ performFastMNNIntegration <- function(seurat_list, mnn_dims = 50, mnn_k = 20) {
   gc()
   
   message("Step 1/4: Merging datasets")
-  merged_object <- performSimpleMerge(seurat_list)
+  merged_object <- performSimpleMerge(seurat_list, compute_reductions = FALSE)
   
   rm(seurat_list)
   gc()
@@ -1212,6 +1228,74 @@ performFastMNNIntegration <- function(seurat_list, mnn_dims = 50, mnn_k = 20) {
   return(merged_object)
 }
 
+performRPCAIntegration <- function(seurat_list, rpca_dims = 30, k_anchor = 5) {
+  # Seurat v5 reciprocal PCA integration: merge, split the RNA assay by dataset, log-normalize, scale, PCA per dataset
+  # projected onto the others (IntegrateLayers + RPCAIntegration), then join the layers back
+  # Args:
+  #   seurat_list: List of preprocessed Seurat objects
+  #   rpca_dims: Number of PCs used to find anchors and in the corrected embedding (default 30)
+  #   k_anchor: Number of neighbors used to pick anchors (default 5; higher = stronger correction)
+  # Returns:
+  #   Merged Seurat object with an "integrated.rpca" reduction; parameters stored in @misc$integration_params
+  n_datasets <- length(seurat_list)
+  message(paste("Starting RPCA with", n_datasets, "datasets"))
+  gc()
+  message("Step 1/4: Merging datasets")
+  merged_object <- performSimpleMerge(seurat_list, compute_reductions = FALSE)
+  rm(seurat_list)
+  gc()
+  DefaultAssay(merged_object) <- "RNA"
+  if (!"dataset" %in% colnames(merged_object@meta.data)) stop("RPCA requires a 'dataset' metadata column to split the datasets")
+  batch_vec <- as.character(merged_object$dataset)
+  batch_sizes <- table(batch_vec[!is.na(batch_vec)])
+  if (length(batch_sizes) < 2) stop(paste("RPCA requires at least 2 datasets in the 'dataset' column; found:", paste(names(batch_sizes), collapse = ", ")))
+  if (any(is.na(batch_vec))) stop("Some cells have no value in the 'dataset' column")
+  # The anchor search needs enough cells per dataset for the PCA dimensions and the neighbor graph
+  if (min(batch_sizes) <= rpca_dims) stop(paste0("Dataset '", names(which.min(batch_sizes)), "' has only ", min(batch_sizes), " cells: RPCA needs more cells than PCA dimensions (", rpca_dims, ")"))
+  message("Step 2/4: Splitting the RNA assay by dataset and log-normalizing")
+  # Objects saved in the v3 format have an Assay that cannot be split into layers
+  if (!inherits(merged_object[["RNA"]], "Assay5")) merged_object[["RNA"]] <- as(merged_object[["RNA"]], "Assay5")
+  merged_object[["RNA"]] <- split(merged_object[["RNA"]], f = batch_vec)
+  merged_object <- NormalizeData(merged_object, verbose = FALSE)
+  n_cells <- ncol(merged_object)
+  # Fewer variable features on very large datasets to limit the memory used by ScaleData
+  n_features <- if (n_cells > 150000) 2000 else if (n_cells > 100000) 2500 else 3000
+  merged_object <- FindVariableFeatures(merged_object, selection.method = "vst", nfeatures = n_features, verbose = FALSE)
+  message(paste("Step 3/4: Scaling", n_features, "variable features and running PCA"))
+  merged_object <- ScaleData(merged_object, features = VariableFeatures(merged_object), verbose = FALSE)
+  merged_object <- runPCA_reproducible(merged_object, npcs = 50, seed = 42, features = VariableFeatures(merged_object), verbose = FALSE)
+  gc()
+  # Anchor weighting uses k.weight neighbors among the anchor cells: Seurat's default (100) fails when a dataset has fewer
+  # anchors, so the value Seurat reports as the maximum is taken and the integration rerun (anchors are only known after the search)
+  k_weight <- 100
+  integrated <- NULL
+  for (attempt in 1:3) {
+    message(paste("Step 4/4: Running RPCA (dims = 1:", rpca_dims, ", k.anchor =", k_anchor, ", k.weight =", k_weight, ", datasets =", length(batch_sizes), ")"))
+    set.seed(42)
+    integrated <- tryCatch(IntegrateLayers(merged_object, method = RPCAIntegration, orig.reduction = "pca", new.reduction = "integrated.rpca",
+                                           dims = 1:rpca_dims, k.anchor = k_anchor, k.weight = k_weight, verbose = FALSE),
+                           error = function(e) e)
+    if (!inherits(integrated, "error")) break
+    max_weight <- suppressWarnings(as.integer(sub(".*less than ([0-9]+).*", "\\1", conditionMessage(integrated))))
+    if (!grepl("anchor cells is less than k.weight", conditionMessage(integrated)) || is.na(max_weight) || max_weight < 6) stop(conditionMessage(integrated))
+    k_weight <- max_weight - 1
+    message(paste("Too few anchor cells for the previous k.weight: retrying with k.weight =", k_weight))
+  }
+  if (inherits(integrated, "error")) stop(conditionMessage(integrated))
+  merged_object <- integrated
+  rm(integrated)
+  merged_object[["RNA"]] <- JoinLayers(merged_object[["RNA"]])
+  gc()
+  merged_object$integration_method <- "rpca"
+  # Parameters actually applied, kept with the object for the report and reproducibility
+  merged_object@misc$integration_params <- list(method = "Seurat RPCA (IntegrateLayers + RPCAIntegration)", seurat_version = as.character(utils::packageVersion("Seurat")),
+                                                split_by = "dataset", dims = rpca_dims, k_anchor = k_anchor, k_weight = k_weight,
+                                                n_variable_features = n_features, npcs = 50, seed = 42)
+  DefaultAssay(merged_object) <- "RNA"
+  message(paste("✓ RPCA completed successfully:", ncol(merged_object), "cells integrated"))
+  return(merged_object)
+}
+
 # QC statistics of an integration (qc_stats of the multiple-datasets module), built from the datasets before merging,
 # while their @misc$qc_params and command history still exist (merge() drops both). Thresholds hold one value per
 # dataset (they can differ when the interface was changed between two uploads); normalization settings likewise.
@@ -1243,11 +1327,12 @@ build_merge_qc_stats <- function(seurat_list) {
               n_variable_features = field("n_variable_features")))
 }
 
-
 # Dataset names typed in the loading modal, applied at integration time (rule 10: names can change after upload).
 # Raw datasets were preprocessed under a placeholder (Dataset_<i>): their dataset / orig.ident columns and project name
-# (used by merge() to prefix cell names) take the final name too. Processed objects (integration_level column) keep
-# their 'dataset' column, which holds the original samples, and only get the integration group.
+# (used by merge() to prefix cell names) take the final name too. A processed object holding a single sample (an object
+# analysed and saved in the Single module) is renamed the same way, so the typed name replaces the old file name and two
+# samples saved under the same Cell Ranger file name stay distinct. Objects holding several samples (already integrated)
+# keep their 'dataset' column, which holds the original samples, and only get the integration group.
 applyDatasetNamesFromInputs <- function(seurat_objects_rv, num_datasets, input) {
   loaded <- which(vapply(seq_len(num_datasets), function(i) !is.null(seurat_objects_rv[[paste0("seurat_object", i)]]), logical(1)))
   final_names <- vapply(loaded, function(i) {
@@ -1260,15 +1345,15 @@ applyDatasetNamesFromInputs <- function(seurat_objects_rv, num_datasets, input) 
     obj_key <- paste0("seurat_object", loaded[k])
     obj <- seurat_objects_rv[[obj_key]]
     obj@meta.data$integration_group <- final_names[k]
-    raw_dataset <- !"integration_level" %in% colnames(obj@meta.data)
-    if (raw_dataset) {
+    n_samples <- if ("dataset" %in% colnames(obj@meta.data)) length(unique(stats::na.omit(as.character(obj@meta.data$dataset)))) else 0
+    single_sample <- !"integration_level" %in% colnames(obj@meta.data) || n_samples <= 1
+    if (single_sample) {
       obj@meta.data$dataset <- final_names[k]
       obj@meta.data$orig.ident <- factor(final_names[k])
       obj@project.name <- final_names[k]
     }
     seurat_objects_rv[[obj_key]] <- obj
-    message(sprintf("Dataset %d -> integration_group%s: %s", loaded[k], if (raw_dataset) " and dataset" else "", final_names[k]))
+    message(sprintf("Dataset %d -> integration_group%s: %s", loaded[k], if (single_sample) " and dataset" else "", final_names[k]))
   }
   return(seurat_objects_rv)
 }
-

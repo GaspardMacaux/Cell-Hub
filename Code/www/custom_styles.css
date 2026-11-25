@@ -2317,6 +2317,13 @@
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
+/* Safety net: a plot rendered wider than its box is scaled down instead of spilling out */
+.spatial-plot-box .shiny-plot-output img,
+.spatial-plot-box .shiny-image-output img {
+  max-width: 100%;
+  height: auto;
+}
+
 .spatial-plot-title {
   color: #495057;
   margin-top: 0;
@@ -2677,4 +2684,87 @@ div[style*="background: white"] .checkbox label {
   font-size: 12px;
   color: #999;
   font-style: italic;
+}
+
+/* Fix AdminLTE clipping for large dynamic plots */
+html, body {
+  height: auto !important;
+  overflow-y: auto !important;
+}
+
+.wrapper {
+  height: auto !important;
+  overflow: visible !important;
+}
+
+.content-wrapper, .right-side {
+  margin-top: 0px !important;
+  overflow-y: visible !important;
+  height: auto !important;
+  min-height: 100vh !important;
+}
+
+.tab-content, .tab-pane {
+  overflow: visible !important;
+  height: auto !important;
+}
+/* Safety net: a plot rendered larger than its container is scaled down (aspect ratio kept) instead of spilling out.
+   max-height only applies to fixed-height outputs; plotOutput(height = "auto") containers still grow with the plot. */
+.spatial-plot-box .shiny-plot-output img,
+.spatial-plot-box .shiny-image-output img {
+  max-width: 100%;
+  max-height: 100%;
+  height: auto;
+  object-fit: contain;
+}
+/* ===========================================
+   DIFFERENTIAL EXPRESSION TABS (cluster comparison pages)
+   =========================================== */
+
+/* Tab labels readable on the gradient boxes */
+.de-tabs > .tabbable > .nav-tabs,
+.de-tabs > .nav-tabs {
+  border-bottom: 1px solid rgba(255,255,255,0.5);
+  margin-top: 10px;
+}
+
+.de-tabs .nav-tabs > li > a {
+  color: white !important;
+  font-weight: bold;
+  border: none;
+}
+
+.de-tabs .nav-tabs > li > a:hover {
+  background-color: rgba(255,255,255,0.15);
+  border: none;
+}
+
+.de-tabs .nav-tabs > li.active > a,
+.de-tabs .nav-tabs > li.active > a:hover,
+.de-tabs .nav-tabs > li.active > a:focus {
+  color: #764ba2 !important;
+  background-color: white;
+  border: none;
+}
+
+.de-tabs .tab-content {
+  padding-top: 15px;
+}
+
+/* One-line "when to use" note at the top of each tab */
+.de-tab-help {
+  background-color: #f3e5f5;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border-left: 3px solid #764ba2;
+  margin-bottom: 15px;
+  font-size: 14px;
+}
+
+/* Numbered step titles above each column */
+.de-step-title {
+  color: white;
+  font-weight: bold;
+  margin-top: 0;
+  margin-bottom: 10px;
 }

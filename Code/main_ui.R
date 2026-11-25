@@ -2440,7 +2440,7 @@ ui <- dashboardPage(
             downloadButton("download_subset_seurat", "Save Subset as RDS", class = "btn-white-violet", style = "padding: 10px 30px; font-size: 16px;")
           )
         )
-        
+
       ),
       ############################## Single/Session ##############################
       tabItem(
@@ -2541,7 +2541,7 @@ ui <- dashboardPage(
             tags$ul(
               style = "line-height: 1.8;",
               tags$li(tags$strong("Mix & Match:"), " Combine raw 10X data with pre-processed Seurat objects"),
-              tags$li(tags$strong("Four Methods:"), " Seurat anchors (CCA), Harmony, fastMNN, or Simple Merge (no batch correction)"),
+              tags$li(tags$strong("Five Methods:"), " Seurat anchors (CCA), Seurat reciprocal PCA (RPCA), Harmony, fastMNN, or Simple Merge (no batch correction)"),
               tags$li(tags$strong("Batch Correction:"), " Automatically correct for technical variation"),
               tags$li(tags$strong("Quality Control:"), " Unified QC parameters across all datasets")
             )
@@ -2742,8 +2742,10 @@ ui <- dashboardPage(
               )
             )
           )
-        )),
-      
+        ),
+      # Demonstration data instructions (PBMC v3 + v2: a technical batch to compare the integration methods)
+      example_data_box("multiple")),
+    
       
       ############################## Multiple/Metadata Management ##############################
       tabItem(
@@ -4997,7 +4999,7 @@ ui <- dashboardPage(
                    tags$p(icon("circle"), " One database to unite them all",
                           style = "font-size: 11px; font-style: italic; margin-bottom: 10px; opacity: 0.7;"),
                    tags$p(
-                     "67,584 interactions across 21 species, consolidated from 10 source databases ",
+                     "76,582 interactions across 21 species, consolidated from 10 source databases ",
                      "(CellChatDB, CellPhoneDB, CellTalkDB, connectomeDB2025, NicheNet, ",
                      "NeuronChatDB, FlyPhoneDB2, cell2cell, PlantPhoneDB, PlantCellChatDB). ",
                      "Each interaction is curated, deduplicated, and traceable to its original source.",
@@ -5057,6 +5059,31 @@ ui <- dashboardPage(
                              border-radius: 6px; margin-top: 15px;",
                      tags$h5("Database Information:", style = "margin-top: 0; color: white;"),
                      verbatimTextOutput("db_info_cellchat")
+                   ),
+                   # Genes of interest: named gene lists used by the database query and by the bubble and chord plots
+                   tags$div(
+                     style = "background-color: rgba(255,255,255,0.2); padding: 15px; border-radius: 6px; margin-top: 15px;",
+                     tags$h5(icon("list"), " Genes of interest:", style = "margin-top: 0; color: white;"),
+                     tags$p("Paste gene symbols (for example differentially expressed genes), separated by spaces, commas or new lines, ",
+                            "and give the list a name. Saved lists can be applied to the bubble and chord plots (Gene list selector) ",
+                            "and searched in the loaded database. Matching ignores case and includes complex subunits; ",
+                            "a list added with an existing name replaces it.",
+                            style = "color: rgba(255,255,255,0.8); font-size: 11px; line-height: 1.35;"),
+                     textInput("gene_list_name_cellchat", "List name:", placeholder = "DEG MuSC up", width = "100%"),
+                     textAreaInput("gene_list_text_cellchat", "Genes:", rows = 4, width = "100%", placeholder = "Egfr Notch1 Dll1 Vcam1"),
+                     actionButton("add_gene_list_cellchat", tagList(icon("plus"), " Add list"), class = "btn-white-cellchat-rose btn-full-width"),
+                     tags$div(style = "background-color: white; color: #333; border-radius: 6px; padding: 6px; margin-top: 10px;",
+                              tableOutput("gene_lists_table_cellchat")),
+                     selectInput("gene_list_selected_cellchat", "Saved list:", choices = NULL, width = "100%"),
+                     fluidRow(
+                       column(8, actionButton("run_gene_query_cellchat", tagList(icon("search"), " Show interactions in the database"),
+                                              class = "btn-white-cellchat-rose btn-full-width")),
+                       column(4, actionButton("delete_gene_list_cellchat", tagList(icon("trash"), " Delete list"),
+                                              class = "btn-white-cellchat-rose btn-full-width"))
+                     ),
+                     tags$div(style = "color: white; margin-top: 8px; font-size: 12px;", textOutput("gene_query_summary_cellchat")),
+                     tags$div(style = "background-color: white; color: #333; border-radius: 6px; padding: 8px; margin-top: 8px;",
+                              DT::dataTableOutput("gene_query_table_cellchat"))
                    )
                  )
           )
@@ -5098,7 +5125,9 @@ ui <- dashboardPage(
                    tags$p("Proceed to 'Ligand-Receptor' tab to create and analyze CellChat objects")
                  )
           )
-        )
+        ),
+        # Demonstration data instructions (PBMC v3 processed in the Single module, then "Use current object")
+        example_data_box("cellchat")
       ),
       
       ############################## Ligand receptor analysis ##############################
@@ -5281,7 +5310,6 @@ ui <- dashboardPage(
             
             column(4, tags$br(),  downloadButton("download_info_table", "Download Table", class = "btn-white-cellchat-rose", style = "width: 100%;"))
           ),
-          
           fluidRow(
             column(3, tags$br(), actionButton("generate_plot_cellchat", tagList(icon("chart-line"), " Generate Plot"), 
                                               class = "btn-white-cellchat-rose btn-full-width", style = "font-size: 16px; padding: 12px;")),
@@ -5292,6 +5320,11 @@ ui <- dashboardPage(
             column(4, selectInput("bubble_plot_format", "Format:", 
                                   choices = c("PNG" = "png", "JPEG" = "jpeg", "TIFF" = "tiff", "SVG" = "svg", "PDF" = "pdf"), 
                                   selected = "png"))
+          ),
+          # Gene list saved in the Load Data tab, applied to the significant interactions after inference
+          fluidRow(
+            column(6, selectInput("bubble_gene_list_cellchat", "Gene list (from Load Data, Genes of interest):",
+                                  choices = c("None (all interactions)" = ""), width = "100%", selectize = FALSE))
           )
         ),
         
@@ -5365,7 +5398,10 @@ ui <- dashboardPage(
                    numericInput("chord_top_n", "Top interactions (by probability, 0 = all):",
                                 value = 30, min = 0, step = 5),
                    sliderInput("chord_label_size", "Label size:", 
-                               value = 0.8, min = 0.4, max = 4, step = 0.1)
+                               value = 0.8, min = 0.4, max = 4, step = 0.1),
+                   # Gene list saved in the Load Data tab, applied before the top-n selection
+                   selectInput("chord_gene_list_cellchat", "Gene list (from Load Data):",
+                               choices = c("None (all interactions)" = ""), width = "100%", selectize = FALSE)
             ),
             column(3,
                    tags$h5("Display Settings", style = "color: white; font-weight: bold;"),
@@ -5769,7 +5805,7 @@ ui <- dashboardPage(
                    uiOutput("section_assignment_ui"),
                    actionButton("apply_sections", tagList(icon("check"), " Apply names, samples and conditions"), class = "btn-gradient-violet", style = "margin-top: 10px;"),
                    actionButton("remove_checked_sections", tagList(icon("trash"), " Remove ticked sections"), class = "btn-gradient-violet", style = "margin-top: 10px; margin-left: 10px;")
-                 )
+                   )
           ),
           column(4,
                  tags$div(
@@ -7302,7 +7338,9 @@ ui <- dashboardPage(
               )
             )
           )
-        )
+        ),
+        # Demonstration data instructions (PBMC v3 processed in the Single module, then "Use current object")
+        example_data_box("trajectory")
       ),
       
       ######################################## Trajectory Tab 2 / Trajectory Construction ####################################

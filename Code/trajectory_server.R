@@ -380,7 +380,7 @@ trajectory_server <- function(input, output, session) {
     plot_params = list(
       file_type = reactive({ input$download_format_trajectory }),
       width = reactive({ min(15, 5 * min(3, max(1, gene_trajectory_n()))) }),
-      height = reactive({ 8 + ceiling(max(1, gene_trajectory_n()) / 3) * 3 }),
+      height = reactive({ min(49, 8 + ceiling(max(1, gene_trajectory_n()) / 3) * 3) }),
       dpi = reactive({ input$dpi_trajectory })
     )
   )

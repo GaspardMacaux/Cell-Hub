@@ -2,7 +2,7 @@
 
 The Docker image `gaspardmacaux/cell-hub:2.0.0` already contains CellHub Database 2.1.2: nothing to do when you use the image.
 
-To run the code outside Docker, download CellHub Database 2.1.2 from Zenodo ([doi:10.5281/zenodo.24197571](https://doi.org/10.5281/zenodo.24197571), latest version) and copy the content of its `app_databases/` folder here, so that this folder holds one sub-folder per species:
+To run the code outside Docker, download CellHub Database 2.1.2 from Zenodo ([doi:10.5281/zenodo.24197570](https://doi.org/10.5281/zenodo.24197570), all versions: take the latest) and copy the content of its `app_databases/` folder here, so that this folder holds one sub-folder per species:
 
 ```
 Code/databases/human/CellHubDB_human_merged.rds

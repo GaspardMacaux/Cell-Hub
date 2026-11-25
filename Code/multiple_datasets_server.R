@@ -4,54 +4,54 @@
 # multiple_datasets_server.R
 
 multiple_datasets_server <- function(input, output, session) {  
-  
+
   ############################## Shared reactive state ##############################
   # Objects used by several sections below
-  
+
   # Variables for the merge dataset part
   multiple_datasets_object <- reactiveVal()
-  
+
   # Register in the session-wide registry so other modules (CellChat, trajectory) can import it
   session$userData$multiple_datasets_object <- multiple_datasets_object
-  
+
   seurat_objects <- reactiveValues()
   data_loaded <- reactiveValues()
   rv_metadata <- reactiveValues(num_fields = 1)
   registered_observers <- new.env(parent = emptyenv())  # tracks which slot observers exist
-  
+
   # Analysis parameter tracking for CSV export
   qc_stats_multi          <- reactiveVal(NULL)
-  
+
   integration_method_used <- reactiveVal(NULL)  # NULL = method read from the object at export (extract_integration_info) 
   harmony_vars_used       <- reactiveVal(NULL)
-  
+
   # og system pour le panneau permanent
   log_system <- createLogSystem()
-  
+
   feature_plot_merge <- reactiveVal()
   dot_plot_merge <- reactiveVal()
   vln_plot_merge <- reactiveVal()
   ridge_plot_merge <- reactiveVal()
-  
+
   # Historique très simple
   cluster_history_merge <- reactiveValues(
     states = list(),
     max_history = 10
   )
-  
+
   forced_col_merge <- reactiveVal(NULL)
-  
+
   # Reactive variables for this tab
   diff_genes_compare <- reactiveVal(NULL)          # Stores DE genes for a cluster vs all others
-  
+
   diff_genes_compare_cluster <- reactiveVal(NULL)  # Stores DE genes for group1 vs group2
   diff_genes_compare_datasets <- reactiveVal(NULL) # Stores DE genes for dataset1 vs dataset2
   gene_table_storage <- reactiveVal(list())        # Stores all DE gene tables for Venn diagrams
   current_gene_lists <- reactiveVal(NULL)          # Stores current lists for Venn diagrams
-  
+
   # Reactive value to store cluster composition data
   cluster_composition_multiple <- reactiveVal(NULL)
-  
+
   
   
   ############################## Download buttons state ##############################
@@ -91,17 +91,17 @@ multiple_datasets_server <- function(input, output, session) {
   bind_download_state("download_session_merge", function() req(multiple_datasets_object()))
   
   ############################## Loading Data ##############################
-  
+
   # ---- Reactive state ----
   merged_gene_tables <- reactiveValues()
-  
+
   # log system pour le modal d'intégration
   modal_log_system <- createLogSystem()
-  
+
   # ---- Observers and computations ----
   shinyjs::disable("add_field")
   shinyjs::disable("add_metadata")
-  
+
   # Initialize metadata split column with default
   observe(run_safely("Interface update", persistent = FALSE, {
     if (!is.null(multiple_datasets_object())) {
@@ -115,25 +115,25 @@ multiple_datasets_server <- function(input, output, session) {
       }
     }
   }))
-  
+
   # ---- UI and text outputs ----
-  
+
   output$datasets_loaded <- reactive({
     !is.null(multiple_datasets_object())
   })
-  
+
   output$merge_loading_logs <- renderPrint({
     cat(log_system$log_value())
   })
-  
+
   output$merge_preintegrated_logs <- renderPrint({
     cat(log_system$log_value())
   })
-  
+
   ############################## Force Memory Cleanup ##############################
-  
+
   # ---- Helpers ----
-  
+
   # Processing individual datasets using modular functions
   observe_file_input <- function(index) {
     key <- paste0("obs_", index)
@@ -207,7 +207,7 @@ multiple_datasets_server <- function(input, output, session) {
       })
     }), ignoreInit = TRUE)
   }
-  
+
   # Gene picker of the visualization tab, refilled after every new object (group_by_select is filled by OBSERVER 1)
   updateUIElements <- function() {
     if (is.null(multiple_datasets_object())) return(invisible(NULL))
@@ -216,9 +216,9 @@ multiple_datasets_server <- function(input, output, session) {
     message(paste("UI elements updated successfully - loaded", length(gene_list) - 1, "genes"))
     invisible(NULL)
   }
-  
+
   # ---- Observers and computations ----
-  
+
   observeEvent(input$force_cleanup_merge, {
     tryCatch({
       showModal(modalDialog(
@@ -302,7 +302,7 @@ multiple_datasets_server <- function(input, output, session) {
       )
     })
   })
-  
+
   # Load pre-integrated Seurat object
   observeEvent(input$load_seurat_file_merge, {
     tryCatch({
@@ -355,7 +355,7 @@ multiple_datasets_server <- function(input, output, session) {
       showNotification(paste("Error loading object:", conditionMessage(e)[1]), type = "error")
     })
   })
-  
+
   observeEvent(input$simple_merge, {
     tryCatch({
       showModal(modalDialog(
@@ -397,7 +397,7 @@ multiple_datasets_server <- function(input, output, session) {
       showNotification(paste("Error during merge:", e$message), type = "error")
     })
   })
-  
+
   # fastMNN Integration Handler
   observeEvent(input$integrate_fastmnn, {
     tryCatch({
@@ -470,6 +470,57 @@ multiple_datasets_server <- function(input, output, session) {
     })
   })
   
+  # RPCA Integration Handler (Seurat v5 reciprocal PCA, split by the 'dataset' column)
+  observeEvent(input$integrate_rpca, {
+    tryCatch({
+      showModal(modalDialog(
+        title = "RPCA Integration",
+        tags$div(
+          style = "text-align: center;",
+          tags$h4("Running RPCA integration..."),
+          tags$p("Method: Seurat IntegrateLayers + RPCAIntegration (30 dimensions)"),
+          tags$br(),
+          tags$div(class = "progress progress-striped active",
+                   tags$div(class = "progress-bar progress-bar-danger", role = "progressbar", style = "width: 100%"))
+        ),
+        easyClose = FALSE,
+        footer = NULL
+      ))
+      # Apply dataset names from UI at integration time (user may have changed them after upload)
+      seurat_objects <- applyDatasetNamesFromInputs(seurat_objects, input$num_datasets, input)
+      # QC thresholds, statistics and normalization of each dataset, kept before merge() drops them (saved with the session)
+      qc_stats_multi(build_merge_qc_stats(lapply(seq_len(input$num_datasets), function(i) seurat_objects[[paste0("seurat_object", i)]])))
+      seurat_list <- list()
+      for (i in 1:input$num_datasets) {
+        seurat_obj <- seurat_objects[[paste0("seurat_object", i)]]
+        if (is.null(seurat_obj)) stop(paste("Dataset", i, "is not processed yet"))
+        seurat_list[[i]] <- seurat_obj
+      }
+      integrated_object <- performDataIntegration(seurat_list = seurat_list, integration_method = "rpca", rpca_dims = 30, rpca_k_anchor = 5)
+      # Memory optimization after integration
+      if (isTRUE(input$optimize_memory_merge == "slim")) {
+        log_system$add_log("Applying post-RPCA memory optimization...", "info")
+        integrated_object <- slimSeuratObject(integrated_object, keep_counts = TRUE, keep_scale_data = FALSE, log_function = log_system$add_log)
+      }
+      multiple_datasets_object(integrated_object)
+      init_clustering_plot_merge(integrated_object)
+      # Same label as extract_integration_info(), used by the parameter export and the PDF report
+      integration_method_used("RPCA")
+      harmony_vars_used(NULL)
+      logMemoryUsage(log_system$add_log, integrated_object, "RPCA integrated object")
+      shinyjs::enable("add_field")
+      shinyjs::enable("add_metadata")
+      removeModal()
+      # Gene picker of the visualization tab
+      updateUIElements()
+      cleanupIntegrationMemory()
+      showNotification(paste("RPCA integration completed successfully!", ncol(integrated_object), "cells integrated"), type = "message", duration = 10)
+    }, error = function(e) {
+      removeModal()
+      showNotification(paste("RPCA integration failed:", conditionMessage(e)[1], "\nTry Harmony or Simple Merge, or check your data."), type = "error", duration = 15)
+    })
+  })
+
   # Modal for dataset loading
   observeEvent(input$open_file_input_modal, run_safely("open file input modal", {
     # Reset all slot states so a new load cycle starts clean
@@ -572,11 +623,10 @@ multiple_datasets_server <- function(input, output, session) {
                   style = "color: #495057; margin-top: 0; margin-bottom: 10px; font-weight: bold;"),
           
           div(
-            style = "display: flex; gap: 10px; justify-content: space-between;",
-            
+            style = "display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px;",
             # Standard Integration
             div(
-              style = "flex: 1; background-color: #e3f2fd; padding: 12px; border-radius: 6px; 
+              style = "flex: 1 1 160px; min-width: 0; background-color: #e3f2fd; padding: 12px; border-radius: 6px; 
                    border: 2px solid #2196F3; min-height: 200px; display: flex; 
                    flex-direction: column;",
               tags$div(
@@ -601,13 +651,13 @@ multiple_datasets_server <- function(input, output, session) {
                 actionButton('integrate', 'Run Standard Integration',
                              class = 'btn-primary', icon = icon("play"),
                              disabled = TRUE,
-                             style = "width: 100%; font-size: 11px; font-weight: bold;")
+                             style = "width: 100%; font-size: 11px; font-weight: bold; white-space: normal;")
               )
             ),
             
             # Harmony Integration
             div(
-              style = "flex: 1; background-color: #e8f5e9; padding: 12px; border-radius: 6px; 
+              style = "flex: 1 1 160px; min-width: 0; background-color: #e8f5e9; padding: 12px; border-radius: 6px; 
                    border: 2px solid #4CAF50; min-height: 200px; display: flex; 
                    flex-direction: column;",
               tags$div(
@@ -635,13 +685,13 @@ multiple_datasets_server <- function(input, output, session) {
                 actionButton('integrate_harmony', 'Run Harmony Integration',
                              class = 'btn-success', icon = icon("play"),
                              disabled = TRUE,
-                             style = "width: 100%; font-size: 11px; font-weight: bold;")
+                             style = "width: 100%; font-size: 11px; font-weight: bold; white-space: normal;")
               )
             ),
             
             # fastMNN Integration
             div(
-              style = "flex: 1; background-color: #ede7f6; padding: 12px; border-radius: 6px; 
+              style = "flex: 1 1 160px; min-width: 0; background-color: #ede7f6; padding: 12px; border-radius: 6px; 
        border: 2px solid #673AB7; min-height: 200px; display: flex; 
        flex-direction: column;",
               tags$div(
@@ -674,13 +724,43 @@ multiple_datasets_server <- function(input, output, session) {
                   class = 'btn-info',
                   icon = icon("play"),
                   disabled = TRUE,
-                  style = "width: 100%; font-size: 11px; font-weight: bold;"
+                  style = "width: 100%; font-size: 11px; font-weight: bold; white-space: normal;"
                 )
+              )
+            ),
+            # RPCA Integration
+            div(
+              style = "flex: 1 1 160px; min-width: 0; background-color: #fce4ec; padding: 12px; border-radius: 6px; 
+                   border: 2px solid #E91E63; min-height: 200px; display: flex; 
+                   flex-direction: column;",
+              tags$div(
+                style = "flex: 1;",
+                tags$div(
+                  style = "text-align: center; margin-bottom: 8px;",
+                  tags$h6(icon("exchange-alt"), strong(" RPCA"),
+                          style = "color: #AD1457; margin: 0; font-size: 14px;")
+                ),
+                tags$p(style = "font-size: 11px; margin: 0 0 8px 0; text-align: center; color: #555;",
+                       "Reciprocal PCA (Seurat)"),
+                tags$div(
+                  style = "font-size: 10px; margin-bottom: 10px; line-height: 1.4;",
+                  "✓ Faster than Standard", tags$br(),
+                  "✓ Less memory than Standard", tags$br(),
+                  "✓ Conservative correction", tags$br(),
+                  tags$span("Good when cell types differ", style = "color: #AD1457;")
+                )
+              ),
+              tags$div(
+                style = "margin-top: auto;",
+                actionButton('integrate_rpca', 'Run RPCA Integration',
+                             class = 'btn-danger', icon = icon("play"),
+                             disabled = TRUE,
+                             style = "width: 100%; font-size: 11px; font-weight: bold; white-space: normal;")
               )
             ),
             # Simple Merge
             div(
-              style = "flex: 1; background-color: #fff3e0; padding: 12px; border-radius: 6px; 
+              style = "flex: 1 1 160px; min-width: 0; background-color: #fff3e0; padding: 12px; border-radius: 6px; 
                    border: 2px solid #FF9800; min-height: 200px; display: flex; 
                    flex-direction: column;",
               tags$div(
@@ -705,7 +785,7 @@ multiple_datasets_server <- function(input, output, session) {
                 actionButton('simple_merge', 'Merge Without Integration',
                              class = 'btn-warning', icon = icon("play"),
                              disabled = TRUE,
-                             style = "width: 100%; font-size: 11px; font-weight: bold;")
+                             style = "width: 100%; font-size: 11px; font-weight: bold; white-space: normal;")
               )
             )
           )
@@ -749,14 +829,14 @@ multiple_datasets_server <- function(input, output, session) {
       })
     }))
   }))
-  
+
   # Setup file input observers
   observeEvent(input$num_datasets, run_safely("num datasets", {
     lapply(1:input$num_datasets, function(i) {
       observe_file_input(i)
     })
   }))
-  
+
   # Enable/disable all three buttons based on file status
   observe(run_safely("Interface update", persistent = FALSE, {
     req(input$num_datasets)
@@ -782,13 +862,14 @@ multiple_datasets_server <- function(input, output, session) {
     enough_files <- length(files_status) >= 2
     should_enable <- all_loaded && enough_files
     
-    # Enable all three buttons
+    # Enable every integration button
     shinyjs::toggleState("integrate", condition = should_enable)  
     shinyjs::toggleState("integrate_harmony", condition = should_enable)  
     shinyjs::toggleState("simple_merge", condition = should_enable)  
     shinyjs::toggleState("integrate_fastmnn", condition = should_enable)
+    shinyjs::toggleState("integrate_rpca", condition = should_enable)
   }))
-  
+
   # Standard integration using modular functions
   observeEvent(input$integrate, {
     tryCatch({
@@ -842,7 +923,7 @@ multiple_datasets_server <- function(input, output, session) {
       showNotification(paste("Error during integration:", e$message), type = "error")
     })
   })
-  
+
   # Harmony Integration Handler 
   observeEvent(input$integrate_harmony, {
     tryCatch({
@@ -929,7 +1010,7 @@ multiple_datasets_server <- function(input, output, session) {
       )
     })
   })
-  
+
   observe(run_safely("Interface update", persistent = FALSE, {
     req(input$num_datasets)
     
@@ -983,12 +1064,12 @@ multiple_datasets_server <- function(input, output, session) {
       )
     }
   }))
-  
+
   # Metadata management using modular functions
   observeEvent(input$add_field, run_safely("add field", {
     rv_metadata$num_fields <- rv_metadata$num_fields + 1
   }))
-  
+
   reactive_metadata_fields <- reactive({
     req(multiple_datasets_object())
     all_metadata_fields <- colnames(multiple_datasets_object()@meta.data)
@@ -1004,7 +1085,7 @@ multiple_datasets_server <- function(input, output, session) {
     include_fields <- setdiff(all_metadata_fields, exclude_fields)
     return(include_fields)
   })
-  
+
   # Process metadata using modular function
   observeEvent(input$add_metadata, {
     tryCatch({
@@ -1069,7 +1150,7 @@ multiple_datasets_server <- function(input, output, session) {
       )
     })
   })
-  
+
   # Reactive gene list for multiple datasets
   reactive_gene_list_merge <- reactive({
     req(multiple_datasets_object())
@@ -1107,9 +1188,9 @@ multiple_datasets_server <- function(input, output, session) {
       return(c(""))  # Return empty list on error
     })
   })
-  
+
   # ---- UI and text outputs ----
-  
+
   # Display loaded datasets in metadata management tab (add before output$metadata_inputs)
   output$loaded_datasets_display_metadata <- renderUI({
     req(multiple_datasets_object())
@@ -1138,7 +1219,7 @@ multiple_datasets_server <- function(input, output, session) {
       })
     )
   })
-  
+
   # Display existing metadata columns
   output$existing_metadata_display <- renderUI({
     req(multiple_datasets_object())
@@ -1194,7 +1275,7 @@ multiple_datasets_server <- function(input, output, session) {
       })
     )
   })
-  
+
   # Metadata split column selector
   output$metadata_split_selector <- renderUI({
     req(multiple_datasets_object())
@@ -1248,7 +1329,7 @@ multiple_datasets_server <- function(input, output, session) {
       )
     )
   })
-  
+
   output$metadata_inputs <- renderUI({
     req(multiple_datasets_object())
     req(input$metadata_split_column)  # NEW: require split column selection
@@ -1357,28 +1438,28 @@ multiple_datasets_server <- function(input, output, session) {
       )
     })
   })
-  
+
   outputOptions(output, 'datasets_loaded', suspendWhenHidden = FALSE)
-  
+
   ############################## Scaling and PCA reduction ##############################
-  
+
   # ---- Reactive state ----
-  
+
   # Observer forfind Clusters and display UMAP
   clustering_plot_merge <- reactiveVal()
-  
+
   # Metadata column the stored raw plot is grouped by (needed to place cluster names on the UMAP)
   clustering_group_col_merge <- reactiveVal(NULL)
-  
+
   # ---- Helpers ----
-  
+
   # Reduction of the Cluster Cells plot: shared UMAP selector when it exists in this object, otherwise the default UMAP
   selected_reduction_merge <- function(seurat_obj) {
     choice <- isolate(input$cluster_cells_reduction_merge)
     if (!is.null(choice) && nzchar(choice) && choice %in% names(seurat_obj@reductions)) return(choice)
     return(get_umap_reduction(seurat_obj))
   }
-  
+
   # Raw plot of Cluster Cells in the selected reduction; group_col NULL = active identities when clusters exist, samples otherwise
   init_clustering_plot_merge <- function(seurat_obj, group_col = NULL) {
     reduction <- selected_reduction_merge(seurat_obj)
@@ -1411,9 +1492,9 @@ multiple_datasets_server <- function(input, output, session) {
     })
     return(invisible(NULL))
   }
-  
+
   # ---- Observers and computations ----
-  
+
   # Scaling, PCA and Elbowplot
   observeEvent(input$runScalePCA, {
     req(multiple_datasets_object())
@@ -1475,7 +1556,7 @@ multiple_datasets_server <- function(input, output, session) {
       showNotification(paste0("Scaling and PCA errors:", e$message), type = "error")
     })
   })
-  
+
   # Any change of the object (renaming, undo, applied labels, colours) refreshes the Cluster Cells plot;
   # sample colouring (after Find Neighbors) is kept, any cluster colouring switches to the active identities
   observeEvent(multiple_datasets_object(), run_safely("Cluster Cells refresh", persistent = FALSE, {
@@ -1484,7 +1565,7 @@ multiple_datasets_server <- function(input, output, session) {
     current_col <- isolate(clustering_group_col_merge())
     init_clustering_plot_merge(obj, group_col = if (isTRUE(current_col %in% c("integration_group", "dataset"))) current_col else "ident")
   }), ignoreInit = TRUE)
-  
+
   # Changing the reduction rebuilds the plot with the same colouring column and propagates the choice to the other UMAP selectors
   observeEvent(input$cluster_cells_reduction_merge, run_safely("cluster cells reduction merge", {
     obj <- multiple_datasets_object()
@@ -1493,7 +1574,7 @@ multiple_datasets_server <- function(input, output, session) {
     if (!identical(input$umap_reduction_merge, input$cluster_cells_reduction_merge))
       updateSelectInput(session, "umap_reduction_merge", selected = input$cluster_cells_reduction_merge)
   }), ignoreInit = TRUE)
-  
+
   observeEvent(input$runFindNeighbors, {
     tryCatch({
       showModal(modalDialog(
@@ -1582,7 +1663,7 @@ multiple_datasets_server <- function(input, output, session) {
       showNotification(paste("Error:", e$message), type = "error")
     })
   })
-  
+
   observeEvent(input$runFindClusters, {
     tryCatch({
       showModal(modalDialog(
@@ -1651,7 +1732,7 @@ multiple_datasets_server <- function(input, output, session) {
       message(paste("Full error:", e))
     })
   })
-  
+
   # Display options applied on top of the stored raw plot, shared by the screen and the download
   clustering_plot_merge_styled <- reactive({
     req(clustering_plot_merge())
@@ -1666,15 +1747,15 @@ multiple_datasets_server <- function(input, output, session) {
         clustering_plot_merge()
       })
   })
-  
+
   # ---- Plots ----
-  
+
   output$UMAPPlot_cluster_merge <- renderPlot({
     clustering_plot_merge_styled()
   })
-  
+
   # ---- Downloads ----
-  
+
   output$downloadUMAP_merge <- createDownloadHandler(
     reactive_data = clustering_plot_merge_styled,
     object_name_reactive = reactive({ 
@@ -1689,14 +1770,14 @@ multiple_datasets_server <- function(input, output, session) {
       dpi = reactive({ input$dpi_umap_merge })
     )
   )
-  
+
   ############################## Visualize genes expressions ##############################
   
   ############################## OBSERVERS FOR METADATA SELECTION ##############################
   ############################## Gene Selection Synchronization ##############################
-  
+
   # ---- Observers and computations ----
-  
+
   # Observer: When genes are selected in pickerInput, update all text inputs
   observeEvent(input$geneInput_merge, run_safely("geneInput merge", {
     selected_genes <- input$geneInput_merge
@@ -1714,7 +1795,7 @@ multiple_datasets_server <- function(input, output, session) {
       message(paste("Updated all gene inputs with:", genes_text))
     }
   }))
-  
+
   # OBSERVER 1: Update group_by_select choices (main axis of plots - X axis)
   # OBSERVER 1: Update group_by_select choices (main axis of plots - X axis)
   observeEvent(multiple_datasets_object(), run_safely("Interface update", persistent = FALSE, {
@@ -1753,7 +1834,7 @@ multiple_datasets_server <- function(input, output, session) {
     updateSelectizeInput(session, "group_by_select", choices = choices_with_empty, selected = default_choice, server = TRUE)
     message(paste("Updated group_by_select. Available:", paste(display_fields, collapse = ", "), "| default:", default_choice))
   }), priority = 10, ignoreNULL = FALSE)
-  
+
   # OBSERVER 2: Update metadata_to_compare choices (for split.by visual separation)
   observeEvent(list(multiple_datasets_object(), input$group_by_select), run_safely("Action", {
     seurat_object <- multiple_datasets_object()
@@ -1800,7 +1881,7 @@ multiple_datasets_server <- function(input, output, session) {
     message(paste("Updated metadata_to_compare (split.by options). Available:", paste(head(split_fields, 3), collapse=", ")))
     
   }), priority = 9, ignoreNULL = FALSE)
-  
+
   # OBSERVER 3: Update cluster_order choices based on group_by_select values
   observeEvent(input$group_by_select, run_safely("group by select", {
     req(multiple_datasets_object())
@@ -1859,9 +1940,9 @@ multiple_datasets_server <- function(input, output, session) {
     }
     
   }), priority = 8, ignoreNULL = FALSE)
-  
+
   # ---- UI and text outputs ----
-  
+
   # OBSERVER 4: Dynamic UI to filter split values
   output$split_values_filter_ui_gene_viz <- renderUI({
     req(multiple_datasets_object(), input$metadata_to_compare)
@@ -1897,11 +1978,11 @@ multiple_datasets_server <- function(input, output, session) {
                      placeholder = 'Select values (empty = show all)'
                    ))
   })
-  
+
   ############################## FEATURE PLOT ##############################
-  
+
   # ---- Observers and computations ----
-  
+
   # Generate feature plot
   observeEvent(input$show_feature_plot_merge, {
     tryCatch({
@@ -2118,9 +2199,9 @@ multiple_datasets_server <- function(input, output, session) {
       message(paste("FeaturePlot error:", e$message))
     })
   })
-  
+
   # ---- Plots ----
-  
+
   output$FeaturePlot2 <- renderPlot({
     req(feature_plot_merge())
     plot_obj <- feature_plot_merge()
@@ -2160,7 +2241,7 @@ multiple_datasets_server <- function(input, output, session) {
       400
     }
   })
-  
+
   output$FeaturePlot2_3d <- renderPlotly({
     req(feature_plot_merge())
     plot_obj <- feature_plot_merge()
@@ -2168,11 +2249,11 @@ multiple_datasets_server <- function(input, output, session) {
       plot_obj
     }
   })
-  
+
   ############################## DOT PLOT ##############################
-  
+
   # ---- Observers and computations ----
-  
+
   # DotPlot observer - using modular function
   observeEvent(input$runDotPlot, {
     tryCatch({
@@ -2277,9 +2358,9 @@ multiple_datasets_server <- function(input, output, session) {
       message(paste("DotPlot error:", e$message))
     })
   })
-  
+
   # ---- Plots ----
-  
+
   # Render DotPlot — theme applied here so font/line inputs are reactive
   output$DotPlot2 <- renderPlot({
     req(dot_plot_merge())
@@ -2296,11 +2377,11 @@ multiple_datasets_server <- function(input, output, session) {
         axis.ticks   = element_line(linewidth = input$axis_line_width_merge)
       )
   })
-  
+
   ############################## VIOLIN PLOT ##############################
-  
+
   # ---- Observers and computations ----
-  
+
   observeEvent(input$runVlnPlot, {
     tryCatch({
       seurat_object <- multiple_datasets_object()
@@ -2433,9 +2514,9 @@ multiple_datasets_server <- function(input, output, session) {
       message(paste("VlnPlot error:", e$message))
     })
   })
-  
+
   # ---- Plots ----
-  
+
   output$VlnPlot2 <- renderPlot({
     req(vln_plot_merge())
     txt_face <- if (isTRUE(input$bold_axis_text_merge)) "bold" else "plain"
@@ -2460,11 +2541,11 @@ multiple_datasets_server <- function(input, output, session) {
       400
     }
   })
-  
+
   ############################## RIDGE PLOT ##############################
-  
+
   # ---- Observers and computations ----
-  
+
   observeEvent(input$runRidgePlot, {
     tryCatch({
       seurat_object <- multiple_datasets_object()
@@ -2525,9 +2606,9 @@ multiple_datasets_server <- function(input, output, session) {
       message(paste("RidgePlot error:", e$message))
     })
   })
-  
+
   # ---- Plots ----
-  
+
   output$Ridge_plot_merge <- renderPlot({
     req(ridge_plot_merge())
     txt_face <- if (isTRUE(input$bold_axis_text_merge)) "bold" else "plain"
@@ -2544,9 +2625,9 @@ multiple_datasets_server <- function(input, output, session) {
         axis.ticks   = element_line(linewidth = input$axis_line_width_merge)
       )
   })
-  
+
   # ---- Downloads ----
-  
+
   # Download handler for VlnPlot Merge
   output$downloadVlnPlotMerge <- createDownloadHandler(
     reactive_data = vln_plot_merge,
@@ -2560,7 +2641,7 @@ multiple_datasets_server <- function(input, output, session) {
     plot_params = list(
       file_type = reactive({ input$plot_format_merge }),
       width = 15, 
-      height = reactive({ (attr(vln_plot_merge(), "n_rows") %||% 1) * 8 }), 
+      height = reactive({ min(49, (attr(vln_plot_merge(), "n_rows") %||% 1) * 8) }),
       dpi = reactive({ input$dpi_input_merge })
     ),
     plot_modifier = function(p) {
@@ -2578,7 +2659,7 @@ multiple_datasets_server <- function(input, output, session) {
       )
     }
   )
-  
+
   # Download handler for FeaturePlot Merge
   output$downloadFeaturePlotMerge <- createDownloadHandler(
     reactive_data = feature_plot_merge,
@@ -2592,7 +2673,7 @@ multiple_datasets_server <- function(input, output, session) {
     plot_params = list(
       file_type = reactive({ input$plot_format_merge }),
       width = reactive({ min(12 * length(trimws(strsplit(input$gene_list_feature_merge, ",")[[1]])), 24) }), 
-      height = reactive({ (attr(feature_plot_merge(), "n_rows") %||% 1) * 8 }), 
+      height = reactive({ min(49, (attr(feature_plot_merge(), "n_rows") %||% 1) * 8) }),
       dpi = reactive({ input$dpi_input_merge })
     ),
     plot_modifier = function(p) {
@@ -2608,7 +2689,7 @@ multiple_datasets_server <- function(input, output, session) {
       )
     }
   )
-  
+
   # Download handler for DotPlot Merge
   output$downloadDotPlotMerge <- createDownloadHandler(
     reactive_data = dot_plot_merge,
@@ -2640,7 +2721,7 @@ multiple_datasets_server <- function(input, output, session) {
       )
     }
   )
-  
+
   # Download handler for RidgePlot Merge
   output$downloadRidgePlotMerge <- createDownloadHandler(
     reactive_data = ridge_plot_merge,
@@ -2672,14 +2753,14 @@ multiple_datasets_server <- function(input, output, session) {
       )
     }
   )
-  
+
   ################# Number of nuclei expressing a gene ###################
-  
+
   # ---- Reactive state ----
   number_of_nuclei_merge <- reactiveVal(NULL)
-  
+
   # ---- Observers and computations ----
-  
+
   # Observer pour l'analyse d'expression dans les datasets intégrés
   observeEvent(input$analyze_btn_genes_expression_merge, {
     tryCatch({
@@ -2718,9 +2799,9 @@ multiple_datasets_server <- function(input, output, session) {
       message("Gene expression error: ", e$message)
     })
   })
-  
+
   # ---- Downloads ----
-  
+
   # Pour le téléchargement des données
   output$download_genes_number_expression_merge <- createDownloadHandler(
     reactive_data = number_of_nuclei_merge,
@@ -2730,18 +2811,18 @@ multiple_datasets_server <- function(input, output, session) {
     data_name = "integrated_expression_analysis",
     download_type = "csv"
   )
-  
+
   ############################## Heatmap and dual expression multi dataset ##############################
-  
+
   # ---- Reactive state ----
   heatmap_plot_multidataset <- reactiveVal()
   heatmap_n_genes_multi <- reactiveVal(0)  # Track number of genes for dynamic height
-  
+
   # Store top genes table for CSV export (NULL when using manual gene input)
   heatmap_markers_data_multi <- reactiveVal(NULL)
-  
+
   # ---- Observers and computations ----
-  
+
   # Update selectors when data changes; selections still valid in the new object are kept
   observeEvent(multiple_datasets_object(), run_safely("Interface update", persistent = FALSE, {
     req(multiple_datasets_object())
@@ -2769,7 +2850,7 @@ multiple_datasets_server <- function(input, output, session) {
                       choices = c("None" = "None", filtered_cols),
                       selected = if (!is.null(current_split) && current_split %in% filtered_cols) current_split else "None")
   }))
-  
+
   # Update the Group 1 / Group 2 choices when the split column changes
   observeEvent(input$split_by_heatmap_multi, run_safely("split by heatmap multi", persistent = FALSE, {
     req(multiple_datasets_object())
@@ -2782,7 +2863,7 @@ multiple_datasets_server <- function(input, output, session) {
     updateSelectizeInput(session, "heatmap_group1_multi", choices = values, selected = character(0), server = TRUE)
     updateSelectizeInput(session, "heatmap_group2_multi", choices = values, selected = character(0), server = TRUE)
   }))
-  
+
   # Generate heatmap: columns = clusters, or cluster x split value with the second axis drawn as panels
   observeEvent(input$generateCustomHeatmap_multi, run_safely("Heatmap (multiple datasets)", {
     # Configuration checked before the modal opens; run_safely closes the modal on any later error
@@ -2867,9 +2948,9 @@ multiple_datasets_server <- function(input, output, session) {
     removeModal()
     showNotification(sprintf("Heatmap with %d genes and %d columns", length(genes), nrow(col_info)), type = "message")
   }))
-  
+
   # ---- Plots ----
-  
+
   # Render heatmap with dynamic height
   output$heatmap_plot_multi <- renderPlot({
     req(heatmap_plot_multidataset())
@@ -2879,9 +2960,9 @@ multiple_datasets_server <- function(input, output, session) {
     if (n_genes == 0) return(600)
     max(400, min(20 * n_genes, 2000))
   })
-  
+
   # ---- Downloads ----
-  
+
   # Download plot handler with dynamic height
   output$download_heatmap_multi <- createDownloadHandler(
     reactive_data = heatmap_plot_multidataset,
@@ -2901,7 +2982,7 @@ multiple_datasets_server <- function(input, output, session) {
       dpi = reactive({ input$dpi_heatmap_multi %||% 300 })
     )
   )
-  
+
   # Download top markers table as CSV (only populated in top markers mode)
   output$download_heatmap_markers_multi <- downloadHandler(
     filename = function() {
@@ -2913,17 +2994,17 @@ multiple_datasets_server <- function(input, output, session) {
       write.csv(markers_df, file, row.names = FALSE)
     }
   )
-  
+
   ############################## Scatter Plot Multi Dataset ##############################
-  
+
   # ---- Reactive state ----
   scatter_plot_multi <- reactiveVal()
-  
+
   # Variable réactive pour stocker le plot actuel
   current_plot_merge <- reactiveVal()
-  
+
   # ---- Observers and computations ----
-  
+
   # Update color_by and split_by choices when data changes
   observeEvent(multiple_datasets_object(), run_safely("Interface update", persistent = FALSE, {
     req(multiple_datasets_object())
@@ -2951,7 +3032,7 @@ multiple_datasets_server <- function(input, output, session) {
                       choices = c("None" = "None", filtered_cols),
                       selected = "None")
   }))
-  
+
   # Generate scatter plot
   observeEvent(input$generateScatter_multi, run_safely("generateScatter multi", {
     req(multiple_datasets_object())
@@ -3026,7 +3107,7 @@ multiple_datasets_server <- function(input, output, session) {
     
     removeModal()
   }))
-  
+
   # Observer les changements dans la sélection du type de plot et mettre à jour le plot
   observe(run_safely("Interface update", persistent = FALSE, {
     plot_type <- input$plot_type_select_merge
@@ -3040,23 +3121,23 @@ multiple_datasets_server <- function(input, output, session) {
       current_plot_merge(ridge_plot_merge())
     }
   }))
-  
+
   # ---- Plots ----
-  
+
   # Render scatter plot
   output$scatter_plot_multi <- renderPlot({
     req(scatter_plot_multi())
     scatter_plot_multi()
   })
-  
+
   # Afficher le plot sélectionné
   output$selected_plot_display_merge <- renderPlot({
     req(current_plot_merge())
     current_plot_merge()
   })
-  
+
   # ---- Downloads ----
-  
+
   # Download handler
   output$download_scatter_multi <- createDownloadHandler(
     reactive_data = scatter_plot_multi,
@@ -3072,16 +3153,16 @@ multiple_datasets_server <- function(input, output, session) {
       dpi = reactive(input$dpi_scatter_multi)  
     )
   )
-  
+
   ############################## Assigning cell identity merge ##############################
-  
+
   # ---- Reactive state ----
-  
+
   # Reactive variable for that tab
   cluster_colours_merge <- reactiveVal()
-  
+
   # ---- Helpers ----
-  
+
   # Sauvegarder l'état
   save_cluster_state_merge <- function(seurat_obj, action_description = "Cluster modification") {
     current_clusters <- as.character(Idents(seurat_obj))
@@ -3098,7 +3179,7 @@ multiple_datasets_server <- function(input, output, session) {
       cluster_history_merge$states <- cluster_history_merge$states[-1]
     }
   }
-  
+
   # Undo: restore the last snapshot (taken before the last change) and drop it; the first entry is the initial state and is kept
   undo_last_action <- function() {
     n_states <- length(cluster_history_merge$states)
@@ -3107,7 +3188,7 @@ multiple_datasets_server <- function(input, output, session) {
     cluster_history_merge$states <- cluster_history_merge$states[-n_states]
     restored
   }
-  
+
   # Function to apply updated colors to Seurat object and update reactive value
   apply_cluster_colours <- function(seurat_object) {
     cluster_colors <- cluster_colours_merge()
@@ -3116,9 +3197,9 @@ multiple_datasets_server <- function(input, output, session) {
     }
     return(seurat_object)
   }
-  
+
   # ---- Observers and computations ----
-  
+
   # Central cluster observer — updates rename/color selectors when object or column changes
   observe(run_safely("Interface update", persistent = FALSE, {
     req(multiple_datasets_object())
@@ -3135,7 +3216,7 @@ multiple_datasets_server <- function(input, output, session) {
                            color_id    = "select_color_merge")
     get_cluster_colors_merge(multiple_datasets_object())
   }))
-  
+
   # Update color picker to reflect the stored color of the selected cluster
   observeEvent(input$select_color_merge, run_safely("select color merge", {
     req(multiple_datasets_object(), input$select_color_merge)
@@ -3144,7 +3225,7 @@ multiple_datasets_server <- function(input, output, session) {
       updateColourInput(session, "select_cluster_merge_color", value = colors[[input$select_color_merge]])
     }
   }), ignoreInit = TRUE)
-  
+
   observe(run_safely("Interface update", persistent = FALSE, {
     req(multiple_datasets_object())
     forced <- isolate(forced_col_merge())
@@ -3159,7 +3240,7 @@ multiple_datasets_server <- function(input, output, session) {
     update_umap_selectors(session, multiple_datasets_object(), module = "merge",
                           selected_col = selected)
   }))
-  
+
   observeEvent(input$rename_single_cluster_merge_button, run_safely("rename single cluster merge button", {
     req(input$select_cluster_merge, input$rename_single_cluster_merge, multiple_datasets_object())
     updated_seurat <- multiple_datasets_object()
@@ -3197,7 +3278,7 @@ multiple_datasets_server <- function(input, output, session) {
     multiple_datasets_object(updated_seurat)
     showNotification(if (merged) paste("Clusters merged under the name:", new_name) else paste("Cluster renamed to:", new_name), type = "message")
   }))
-  
+
   observeEvent(input$update_colour_merge_button, run_safely("update colour merge button", {
     message("Update the color of the selected cluster for multiple datasets")
     updated_seurat <- multiple_datasets_object()
@@ -3235,19 +3316,19 @@ multiple_datasets_server <- function(input, output, session) {
       type = "message"
     )
   }))
-  
+
   ############################## Automated annotation (reference label transfer + SingleR) ##############################
-  
+
   # ---- Reactive state ----
   transfer_result_merge <- reactiveVal(NULL)
   singler_result_merge <- reactiveVal(NULL)
   annotation_reference_merge <- reactiveVal(NULL)
-  
+
   # celldex references are cached on disk (pre-filled in the Docker image) so they are downloaded only once
   singler_cache_dir_merge <- Sys.getenv("CELLHUB_REF_CACHE", file.path(tools::R_user_dir("CellHub", "cache"), "singler_references"))
-  
+
   # ---- Helpers ----
-  
+
   # Cluster vector used for the per-cluster vote (same column as the cluster selectors; "ident" falls back to Idents)
   annotation_clusters_merge <- function(obj) {
     cluster_col <- active_cluster_column_merge()
@@ -3255,13 +3336,13 @@ multiple_datasets_server <- function(input, output, session) {
     clusters <- if (!is.null(cluster_col)) as.character(obj@meta.data[[cluster_col]]) else as.character(Idents(obj))
     list(column = cluster_col, values = clusters)
   }
-  
+
   # Cluster summary recomputed with the method's current agreement threshold (key = "transfer" or "singler")
   annotation_summary_merge <- function(result, key) {
     min_agreement <- input[[paste0(key, "_min_agreement_merge")]] %||% 50
     summarize_annotation_by_cluster(result$cells, min_agreement / 100, result$params$max_unassigned)
   }
-  
+
   # Rename clusters from an annotation result (undoable, like manual renaming)
   apply_annotation_labels_merge <- function(result, method_name, key) {
     obj <- multiple_datasets_object()
@@ -3289,7 +3370,7 @@ multiple_datasets_server <- function(input, output, session) {
     showNotification(sprintf("%s labels applied to %d of %d clusters", method_name,
                              sum(new_names != names(new_names)), length(new_names)), type = "message", duration = 6)
   }
-  
+
   # Cluster summary table with confidence colouring
   render_annotation_summary_merge <- function(result, key) {
     df <- annotation_summary_merge(result, key)
@@ -3298,7 +3379,7 @@ multiple_datasets_server <- function(input, output, session) {
     datatable(df, rownames = FALSE, options = list(pageLength = 25, scrollX = TRUE)) %>%
       formatStyle("Confidence", target = "row", backgroundColor = styleEqual(c("High", "Low"), c("#e8f5e9", "#ffebee")))
   }
-  
+
   # Status line under the Run button: not run yet, or a one-line summary of the last run
   render_annotation_status_merge <- function(result, key, extra = NULL) {
     if (is.null(result)) {
@@ -3313,7 +3394,7 @@ multiple_datasets_server <- function(input, output, session) {
       if (!is.null(extra)) tags$div(extra, style = "color: #6c757d; margin-top: 2px;")
     )
   }
-  
+
   # UMAP coloured by a per-cell annotation column or by its confidence score (same reduction as the final UMAP)
   plot_annotation_umap_merge <- function(column, title, continuous = FALSE) {
     obj <- multiple_datasets_object()
@@ -3327,20 +3408,20 @@ multiple_datasets_server <- function(input, output, session) {
       DimPlot(obj, reduction = reduc, group.by = column, label = TRUE, repel = TRUE, label.size = 3) + ggtitle(title)
     }
   }
-  
+
   # ---- Observers and computations ----
-  
+
   # A new merged/integrated object invalidates previous annotation results and the undo history of the previous object
-  observeEvent(list(input$load_seurat_file_merge, input$integrate, input$integrate_harmony, input$integrate_fastmnn, input$simple_merge), run_safely("Action", {
+  observeEvent(list(input$load_seurat_file_merge, input$integrate, input$integrate_harmony, input$integrate_fastmnn, input$integrate_rpca, input$simple_merge), run_safely("Action", {
     singler_result_merge(NULL)
     transfer_result_merge(NULL)
     cluster_history_merge$states <- list()
   }), ignoreInit = TRUE)
-  
+
   ############ Label transfer from a user reference ############
-  
+
   # ---- Observers and computations ----
-  
+
   observeEvent(input$annotation_reference_file_merge, run_safely("annotation reference file merge", {
     showModal(modalDialog(title = "Loading reference", "Reading the annotated reference dataset...", easyClose = FALSE, footer = NULL))
     tryCatch({
@@ -3361,7 +3442,7 @@ multiple_datasets_server <- function(input, output, session) {
       showNotification(paste("Error loading reference:", conditionMessage(e)[1]), type = "error", duration = 10)
     })
   }))
-  
+
   observeEvent(input$run_transfer_merge, run_safely("run transfer merge", {
     req(multiple_datasets_object())
     if (is.null(annotation_reference_merge())) {
@@ -3391,7 +3472,7 @@ multiple_datasets_server <- function(input, output, session) {
       message("Label transfer error (merge): ", conditionMessage(e)[1])
     })
   }))
-  
+
   observeEvent(input$apply_transfer_labels_merge, run_safely("apply transfer labels merge", {
     req(multiple_datasets_object())
     if (is.null(transfer_result_merge())) {
@@ -3401,9 +3482,9 @@ multiple_datasets_server <- function(input, output, session) {
     tryCatch(apply_annotation_labels_merge(transfer_result_merge(), "Reference", "transfer"),
              error = function(e) showNotification(paste("Error applying labels:", conditionMessage(e)[1]), type = "error", duration = 10))
   }))
-  
+
   # ---- UI and text outputs ----
-  
+
   # Reference summary: size and the labels found in the chosen column
   output$annotation_reference_info_merge <- renderUI({
     ref <- annotation_reference_merge()
@@ -3420,35 +3501,35 @@ multiple_datasets_server <- function(input, output, session) {
              style = "margin: 0; color: #6c757d;")
     )
   })
-  
+
   output$transfer_status_merge <- renderUI({
     res <- transfer_result_merge()
     extra <- if (!is.null(res)) sprintf("%s anchors, %s reference cells, %s shared genes", format(res$params$n_anchors, big.mark = ","),
                                         format(res$params$n_reference_cells, big.mark = ","), format(res$params$n_common_genes, big.mark = ",")) else NULL
     render_annotation_status_merge(res, "transfer", extra)
   })
-  
+
   # ---- Plots ----
-  
+
   output$transfer_umap_labels_merge <- renderPlot({
     req(transfer_result_merge())
     plot_annotation_umap_merge("RefTransfer_pruned_label", "Transferred labels (per cell)")
   })
-  
+
   output$transfer_umap_score_merge <- renderPlot({
     req(transfer_result_merge())
     plot_annotation_umap_merge("RefTransfer_score", "Prediction score (max)", continuous = TRUE)
   })
-  
+
   # ---- Tables ----
-  
+
   output$transfer_summary_merge <- renderDT({
     req(transfer_result_merge())
     render_annotation_summary_merge(transfer_result_merge(), "transfer")
   })
-  
+
   # ---- Downloads ----
-  
+
   output$download_transfer_clusters_merge <- downloadHandler(
     filename = function() paste0(getObjectNameForDownload(multiple_datasets_object(), default_name = "MultipleDatasets"),
                                  "_RefTransfer_cluster_summary_", format(Sys.Date(), "%Y%m%d"), ".csv"),
@@ -3462,7 +3543,7 @@ multiple_datasets_server <- function(input, output, session) {
       write.csv(out, file, row.names = FALSE)
     }
   )
-  
+
   output$download_transfer_cells_merge <- downloadHandler(
     filename = function() paste0(getObjectNameForDownload(multiple_datasets_object(), default_name = "MultipleDatasets"),
                                  "_RefTransfer_per_cell_", format(Sys.Date(), "%Y%m%d"), ".csv"),
@@ -3471,24 +3552,24 @@ multiple_datasets_server <- function(input, output, session) {
       write.csv(transfer_result_merge()$cells, file, row.names = FALSE)
     }
   )
-  
+
   ############ SingleR (built-in celldex references) ############
-  
+
   # ---- Observers and computations ----
-  
+
   # Reference choices follow the selected species
   observeEvent(input$singler_species_merge, run_safely("singler species merge", {
     refs <- get_singler_references(input$singler_species_merge)
     updateSelectInput(session, "singler_reference_merge", choices = refs, selected = if (length(refs) > 0) refs[[1]] else NULL)
   }))
-  
+
   # Default the SingleR species to the one chosen in the loading modal
   observeEvent(input$species_choice_merge, run_safely("species choice merge", {
     if (input$species_choice_merge %in% c("human", "mouse")) {
       updateSelectInput(session, "singler_species_merge", selected = input$species_choice_merge)
     }
   }))
-  
+
   observeEvent(input$run_singler_merge, run_safely("run singler merge", {
     req(multiple_datasets_object(), input$singler_reference_merge)
     showModal(modalDialog(title = "Automated annotation (SingleR)",
@@ -3512,7 +3593,7 @@ multiple_datasets_server <- function(input, output, session) {
       message("SingleR error (merge): ", conditionMessage(e)[1])
     })
   }))
-  
+
   observeEvent(input$apply_singler_labels_merge, run_safely("apply singler labels merge", {
     req(multiple_datasets_object())
     if (is.null(singler_result_merge())) {
@@ -3522,7 +3603,7 @@ multiple_datasets_server <- function(input, output, session) {
     tryCatch(apply_annotation_labels_merge(singler_result_merge(), "SingleR", "singler"),
              error = function(e) showNotification(paste("Error applying labels:", conditionMessage(e)[1]), type = "error", duration = 10))
   }))
-  
+
   # Compute 3D UMAP from the same (integrated) reduction and dimensions as the 2D UMAP
   observeEvent(input$compute_3d_umap_merge, run_safely("compute 3d umap merge", {
     req(multiple_datasets_object())
@@ -3536,13 +3617,13 @@ multiple_datasets_server <- function(input, output, session) {
       multiple_datasets_object(seurat_obj)
       removeModal()
       showNotification(sprintf("3D UMAP computed (%s, %d dimensions): shown below the clustering plot.", reduction, n_dims), type = "message")
-    }, error = function(e) {
+      }, error = function(e) {
       removeModal()
       showNotification(paste("Error computing 3D UMAP:", conditionMessage(e)[1]), type = "error")
       message("Error in 3D UMAP computation: ", conditionMessage(e)[1])
     })
   }))
-  
+
   # Observer pour Undo
   observeEvent(input$undo_cluster_merge, run_safely("undo cluster merge", {
     req(multiple_datasets_object())
@@ -3576,35 +3657,35 @@ multiple_datasets_server <- function(input, output, session) {
     multiple_datasets_object(updated_seurat)
     showNotification("Undid last action", type = "message")
   }))
-  
+
   # ---- UI and text outputs ----
-  
+
   output$singler_status_merge <- renderUI({
     res <- singler_result_merge()
     extra <- if (!is.null(res)) sprintf("%s, %s shared genes", res$params$reference, format(res$params$n_common_genes, big.mark = ",")) else NULL
     render_annotation_status_merge(res, "singler", extra)
   })
-  
+
   # Flag used by the UI to show the 3D panel only once a 3D UMAP exists
   output$has_umap3d_merge <- reactive({
     obj <- multiple_datasets_object()
     !is.null(obj) && "umap3d" %in% names(obj@reductions)
   })
-  
+
   outputOptions(output, "has_umap3d_merge", suspendWhenHidden = FALSE)
-  
+
   # ---- Plots ----
-  
+
   output$singler_umap_labels_merge <- renderPlot({
     req(singler_result_merge())
     plot_annotation_umap_merge("SingleR_pruned_label", "SingleR labels (per cell)")
   })
-  
+
   output$singler_umap_delta_merge <- renderPlot({
     req(singler_result_merge())
     plot_annotation_umap_merge("SingleR_delta", "SingleR confidence (delta to next-best label)", continuous = TRUE)
   })
-  
+
   # Interactive 3D UMAP in the Clustering step, coloured by the current clusters
   output$clustering_umap3d_merge <- renderPlotly({
     req(multiple_datasets_object())
@@ -3616,7 +3697,7 @@ multiple_datasets_server <- function(input, output, session) {
                         hide_axes = isTRUE(input$umap3d_hide_axes_clust_merge),
                         dark_mode = isTRUE(input$umap3d_dark_clust_merge))
   })
-  
+
   # Display final UMAP with 2D/3D support
   output$umap_finale_merge <- renderPlotly({
     req(multiple_datasets_object())
@@ -3752,16 +3833,16 @@ multiple_datasets_server <- function(input, output, session) {
       return(p)
     }
   })
-  
+
   # ---- Tables ----
-  
+
   output$singler_summary_merge <- renderDT({
     req(singler_result_merge())
     render_annotation_summary_merge(singler_result_merge(), "singler")
   })
-  
+
   # ---- Downloads ----
-  
+
   output$download_singler_clusters_merge <- downloadHandler(
     filename = function() paste0(getObjectNameForDownload(multiple_datasets_object(), default_name = "MultipleDatasets"),
                                  "_SingleR_cluster_summary_", format(Sys.Date(), "%Y%m%d"), ".csv"),
@@ -3775,7 +3856,7 @@ multiple_datasets_server <- function(input, output, session) {
       write.csv(out, file, row.names = FALSE)
     }
   )
-  
+
   output$download_singler_cells_merge <- downloadHandler(
     filename = function() paste0(getObjectNameForDownload(multiple_datasets_object(), default_name = "MultipleDatasets"),
                                  "_SingleR_per_cell_", format(Sys.Date(), "%Y%m%d"), ".csv"),
@@ -3784,21 +3865,21 @@ multiple_datasets_server <- function(input, output, session) {
       write.csv(singler_result_merge()$cells, file, row.names = FALSE)
     }
   )
-  
+
   ############################# Differential Gene Expression Analysis  #############################
-  
+
   # ---- Reactive state ----
   filtered_umap_plot <- reactiveVal(NULL)          # Stores the filtered UMAP plot
-  
+
   # ---- Observers and computations ----
-  
+
   # Disable download buttons at startup
   shinyjs::disable("download_markers_single_cluster_merge")
-  
+
   shinyjs::disable("download_markers_multiple_clusters_merge")
   shinyjs::disable("download_diff_dataset_cluster")
   shinyjs::disable("download_venn_diagram")
-  
+
   # Reactive column name backing the cluster selector — same resolution logic used everywhere
   # this dropdown is populated, so calculate_DE can group.by the exact same column (fixes
   # "Cannot find the following identities" when the color-by selector points to a non-cluster
@@ -3819,7 +3900,7 @@ multiple_datasets_server <- function(input, output, session) {
       get_cluster_column(obj)
     }
   })
-  
+
   # Reactive cluster list — reads either color selector (kept in sync via observers below).
   active_clusters_merge <- reactive({
     req(multiple_datasets_object())
@@ -3831,20 +3912,20 @@ multiple_datasets_server <- function(input, output, session) {
       as.character(unique(Idents(obj)))
     }
   })
-  
+
   # Keep the two "Color by" selectors in sync across tabs (umap_finale_col_merge ↔ filtered_umap_col_merge).
   observeEvent(input$umap_finale_col_merge, run_safely("umap finale col merge", {
     req(nzchar(input$umap_finale_col_merge))
     if (!identical(input$filtered_umap_col_merge, input$umap_finale_col_merge))
       updateSelectInput(session, "filtered_umap_col_merge", selected = input$umap_finale_col_merge)
   }), ignoreInit = TRUE)
-  
+
   observeEvent(input$filtered_umap_col_merge, run_safely("filtered umap col merge", {
     req(nzchar(input$filtered_umap_col_merge))
     if (!identical(input$umap_finale_col_merge, input$filtered_umap_col_merge))
       updateSelectInput(session, "umap_finale_col_merge", selected = input$filtered_umap_col_merge)
   }), ignoreInit = TRUE)
-  
+
   observeEvent(input$umap_reduction_merge, run_safely("umap reduction merge", {
     req(nzchar(input$umap_reduction_merge))
     if (!identical(input$filtered_umap_reduction_merge, input$umap_reduction_merge))
@@ -3852,15 +3933,15 @@ multiple_datasets_server <- function(input, output, session) {
     if (!identical(input$cluster_cells_reduction_merge, input$umap_reduction_merge))
       updateSelectInput(session, "cluster_cells_reduction_merge", selected = input$umap_reduction_merge)
   }), ignoreInit = TRUE)
-  
+
   observeEvent(input$filtered_umap_reduction_merge, run_safely("filtered umap reduction merge", {
     req(nzchar(input$filtered_umap_reduction_merge))
     if (!identical(input$umap_reduction_merge, input$filtered_umap_reduction_merge))
       updateSelectInput(session, "umap_reduction_merge", selected = input$filtered_umap_reduction_merge)
   }), ignoreInit = TRUE)
-  
+
   # ---- UI and text outputs ----
-  
+
   # Dataset filter for the filtered UMAP (values read by output$filtered_umap_plot and its download handler)
   output$dataset_filter_ui <- renderUI({
     req(multiple_datasets_object())
@@ -3871,9 +3952,9 @@ multiple_datasets_server <- function(input, output, session) {
     selected <- if (!is.null(current) && all(current %in% c("All Datasets", datasets))) current else "All Datasets"
     selectInput("dataset_filter", "Datasets shown:", choices = c("All Datasets", datasets), selected = selected, multiple = TRUE)
   })
-  
+
   # ---- Plots ----
-  
+
   output$filtered_umap_plot <- renderPlot({
     req(multiple_datasets_object(), input$filtered_umap_col_merge)
     seurat_obj <- multiple_datasets_object()
@@ -3933,9 +4014,9 @@ multiple_datasets_server <- function(input, output, session) {
     filtered_umap_plot(plot)
     plot
   })
-  
+
   # ---- Downloads ----
-  
+
   output$download_filtered_umap_plot <- createDownloadHandler(
     reactive_data = filtered_umap_plot,
     object_name_reactive = reactive({ getObjectNameForDownload(multiple_datasets_object(), default_name = "MergedUMAP") }),
@@ -3948,18 +4029,18 @@ multiple_datasets_server <- function(input, output, session) {
       dpi = reactive({ input$filtered_umap_plot_dpi })
     )
   )
-  
+
   ############################# Cluster vs All Comparison #############################
-  
+
   # ---- Observers and computations ----
-  
+
   # Cluster vs All
   observe(run_safely("Interface update", persistent = FALSE, {
     req(multiple_datasets_object())
     cluster_choices <- active_clusters_merge()
     updateSelectInput(session, "selected_cluster", choices = cluster_choices, selected = cluster_choices[1])
   }))
-  
+
   # Reactive function for markers
   # Reactive function for markers
   observeEvent(input$calculate_DE, {
@@ -4018,9 +4099,9 @@ multiple_datasets_server <- function(input, output, session) {
       showNotification(paste0("Error calculating differentially expressed genes: ", e$message), type = "error")
     })
   })
-  
+
   # ---- Tables ----
-  
+
   output$DE_genes_table <- renderDataTable({
     req(diff_genes_compare())
     tryCatch({
@@ -4039,9 +4120,9 @@ multiple_datasets_server <- function(input, output, session) {
       showNotification(paste0("Error displaying gene table: ", e$message), type = "error")
     })
   })
-  
+
   # ---- Downloads ----
-  
+
   output$download_markers_single_cluster_merge <- createDownloadHandler(
     reactive_data = reactive({
       df <- diff_genes_compare()
@@ -4067,18 +4148,18 @@ multiple_datasets_server <- function(input, output, session) {
     data_name = reactive({ paste0("cluster_", input$selected_cluster, "_vs_all_others") }),
     download_type = "csv"
   )
-  
+
   ############################# Group vs Group Comparison #############################
-  
+
   # ---- Observers and computations ----
-  
+
   # Observer to update second group choices
   observeEvent(input$cluster1_compare, run_safely("cluster1 compare", {
     req(multiple_datasets_object())
     remaining_clusters <- setdiff(active_clusters_merge(), input$cluster1_compare)
     updateSelectInput(session, "cluster2_compare", choices = remaining_clusters)
   }))
-  
+
   # Cluster comparison
   observeEvent(input$compare_clusters_button, {
     tryCatch({
@@ -4156,9 +4237,9 @@ multiple_datasets_server <- function(input, output, session) {
       showNotification(paste("Cluster comparison error:", e$message), type = "error")
     })
   })
-  
+
   # ---- UI and text outputs ----
-  
+
   # Compare Two Clusters
   output$cluster1_compare_ui <- renderUI({
     req(multiple_datasets_object())
@@ -4168,7 +4249,7 @@ multiple_datasets_server <- function(input, output, session) {
                 selected = NULL,
                 multiple = TRUE)
   })
-  
+
   output$cluster2_compare_ui <- renderUI({
     req(multiple_datasets_object())
     remaining_clusters <- setdiff(active_clusters_merge(), input$cluster1_compare)
@@ -4178,9 +4259,9 @@ multiple_datasets_server <- function(input, output, session) {
                 selected = NULL,
                 multiple = TRUE)
   })
-  
+
   # ---- Tables ----
-  
+
   output$diff_genes_table_compare <- renderDataTable({
     req(diff_genes_compare_cluster())
     tryCatch({
@@ -4199,9 +4280,9 @@ multiple_datasets_server <- function(input, output, session) {
       showNotification(paste0("Error displaying gene table: ", e$message), type = "error")
     })
   })
-  
+
   # ---- Downloads ----
-  
+
   output$download_markers_multiple_clusters_merge <- createDownloadHandler(
     reactive_data = reactive({
       df <- diff_genes_compare_cluster()
@@ -4233,11 +4314,11 @@ multiple_datasets_server <- function(input, output, session) {
     }),
     download_type = "csv"
   )
-  
+
   ############################# Group Comparison (Metadata-based) #############################
-  
+
   # ---- Observers and computations ----
-  
+
   # Observer to update group 2 choices when group 1 changes
   observeEvent(input$dataset1_compare, run_safely("dataset1 compare", {
     req(multiple_datasets_object(), input$metadata_column_compare)
@@ -4248,7 +4329,7 @@ multiple_datasets_server <- function(input, output, session) {
     
     updateSelectInput(session, "dataset2_compare", choices = remaining_values)
   }))
-  
+
   # Samples x groups design of the pending pseudobulk comparison, shown before the analysis is run
   pseudobulk_design_preview <- reactive({
     req(identical(input$de_method_compare, "pseudobulk"), multiple_datasets_object(), input$sample_column_compare,
@@ -4261,7 +4342,7 @@ multiple_datasets_server <- function(input, output, session) {
     condition <- compare_cell_condition(seurat_obj, input$metadata_column_compare, input$cluster_column_compare, input$dataset1_compare, input$dataset2_compare, clusters)
     summarize_pseudobulk_design(seurat_obj@meta.data[[input$sample_column_compare]], condition, min_cells)
   })
-  
+
   observeEvent(input$compare_datasets_button, {
     run_safely("Group comparison", {
       req(input$metadata_column_compare, input$dataset1_compare, input$dataset2_compare, input$cluster_column_compare, multiple_datasets_object())
@@ -4356,9 +4437,9 @@ multiple_datasets_server <- function(input, output, session) {
       showNotification(paste0("Found ", nrow(temp_res), " differentially expressed genes"), type = "message", duration = 5)
     })
   })
-  
+
   # ---- UI and text outputs ----
-  
+
   # UI to select which metadata column to use for grouping
   output$metadata_column_compare_ui <- renderUI({
     req(multiple_datasets_object())
@@ -4383,7 +4464,7 @@ multiple_datasets_server <- function(input, output, session) {
                 choices = available_cols,
                 selected = default_col)
   })
-  
+
   # UI to select values for group 1 based on selected metadata column
   output$dataset1_compare_ui <- renderUI({
     req(multiple_datasets_object(), input$metadata_column_compare)
@@ -4398,7 +4479,7 @@ multiple_datasets_server <- function(input, output, session) {
                 selected = NULL,
                 multiple = TRUE)
   })
-  
+
   # UI to select values for group 2
   output$dataset2_compare_ui <- renderUI({
     req(multiple_datasets_object(), input$metadata_column_compare, input$dataset1_compare)
@@ -4414,7 +4495,7 @@ multiple_datasets_server <- function(input, output, session) {
                 selected = NULL,
                 multiple = TRUE)
   })
-  
+
   # NEW: Selector for which clustering column to use
   output$cluster_column_selector_ui <- renderUI({
     req(multiple_datasets_object())
@@ -4451,7 +4532,7 @@ multiple_datasets_server <- function(input, output, session) {
                 choices = cluster_col_choices,
                 selected = default_col)
   })
-  
+
   # UI to select clusters to analyze - CORRECTED VERSION
   output$cluster_compare_ui <- renderUI({
     message("=== cluster_compare_ui triggered ===")
@@ -4534,7 +4615,7 @@ multiple_datasets_server <- function(input, output, session) {
                      placeholder = 'Select multiple clusters'
                    ))
   })
-  
+
   # Sample column for pseudobulk: identifies the biological replicate (one animal = one sample)
   output$sample_column_compare_ui <- renderUI({
     req(multiple_datasets_object())
@@ -4543,7 +4624,7 @@ multiple_datasets_server <- function(input, output, session) {
     default_col <- if ("dataset" %in% categorical) "dataset" else if ("orig.ident" %in% categorical) "orig.ident" else categorical[1]
     selectInput("sample_column_compare", label = "Sample column (one value = one animal / biological replicate):", choices = categorical, selected = default_col)
   })
-  
+
   output$pseudobulk_design_status <- renderUI({
     design <- pseudobulk_design_preview()
     problem <- check_pseudobulk_design(design, min_samples = 2)
@@ -4552,16 +4633,16 @@ multiple_datasets_server <- function(input, output, session) {
     note <- if (min(n1, n2) < 3) " At least 3 samples per group are recommended: with 2 the variance estimate relies mostly on the other genes." else ""
     tags$p(icon("check-circle"), sprintf(" Design OK: %d vs %d samples.%s", n1, n2, note), style = "color: #2e7d32; margin: 5px 0;")
   })
-  
+
   # ---- Tables ----
-  
+
   output$pseudobulk_design_compare <- renderTable({
     design <- pseudobulk_design_preview()
     req(nrow(design) > 0)
     group_label <- c(Group1 = paste("Group 1:", paste(input$dataset1_compare, collapse = ", ")), Group2 = paste("Group 2:", paste(input$dataset2_compare, collapse = ", ")))
     data.frame(Sample = design$sample, Group = unname(group_label[design$condition]), Cells = design$n_cells, Used = ifelse(design$used, "yes", "no (too few cells)"))
   }, striped = TRUE, bordered = TRUE, spacing = "s")
-  
+
   output$diff_dataset_cluster <- renderDataTable({
     req(diff_genes_compare_datasets())
     df <- diff_genes_compare_datasets()
@@ -4577,9 +4658,9 @@ multiple_datasets_server <- function(input, output, session) {
     colnames(df) <- c("Gene", "Log2FC", "Pct.1", "Pct.2", "P-value", "Adj. P-value", "Comparison")
     build_de_datatable(df, order_col = "Log2FC")
   })
-  
+
   # ---- Downloads ----
-  
+
   output$download_diff_dataset_cluster <- downloadHandler(
     filename = function() {
       dataset1_text <- paste(input$dataset1_compare, collapse = "-")
@@ -4611,13 +4692,13 @@ multiple_datasets_server <- function(input, output, session) {
     },
     contentType = "text/csv"
   )
-  
+
   ############################## Cluster Composition Multiple ##############################
-  
+
   ############################# Metadata Column Selectors for Composition Analysis #############################
-  
+
   # ---- Observers and computations ----
-  
+
   # Observer for generating cluster composition table for multiple datasets
   observeEvent(input$generate_cluster_table_multiple, {
     tryCatch({
@@ -4661,9 +4742,9 @@ multiple_datasets_server <- function(input, output, session) {
       showNotification(paste("Error generating table:", e$message), type = "error", duration = 10)
     })
   })
-  
+
   # ---- UI and text outputs ----
-  
+
   # Metadata column selector for cluster composition table
   output$metadata_column_composition_ui <- renderUI({
     req(multiple_datasets_object())
@@ -4688,7 +4769,7 @@ multiple_datasets_server <- function(input, output, session) {
                 choices = available_cols,
                 selected = default_col)
   })
-  
+
   # Metadata column selector for pie chart
   output$metadata_column_pie_ui <- renderUI({
     req(multiple_datasets_object())
@@ -4713,17 +4794,17 @@ multiple_datasets_server <- function(input, output, session) {
                 choices = available_cols,
                 selected = default_col)
   })
-  
+
   # ---- Tables ----
-  
+
   # Render cluster composition table for multiple datasets using existing function
   output$cluster_table_multiple <- renderDT({
     req(cluster_composition_multiple())
     render_cluster_composition_table(cluster_composition_multiple(), is_integrated = TRUE)
   })
-  
+
   # ---- Downloads ----
-  
+
   # Download handler for multiple datasets cluster composition using modular functions
   output$download_cluster_composition_multiple <- createDownloadHandler(
     reactive_data = reactive({ data <- cluster_composition_multiple(); data$Size_Bar <- NULL; return(data) }),
@@ -4731,19 +4812,19 @@ multiple_datasets_server <- function(input, output, session) {
     data_name = "cluster_composition",
     download_type = "csv"
   )
-  
+
   ###############Co-expression calculation#############
-  
+
   # ---- Reactive state ----
   gene_coexpression_data_multiple <- reactiveVal(NULL)
-  
+
   # Estimate each gene's threshold from its level in background cells and fill the threshold fields
   coexpr_background_estimate_multiple <- reactiveVal(NULL)
-  
+
   coexpr_de_results_multiple <- reactiveVal(NULL)
-  
+
   # ---- Helpers ----
-  
+
   # Thresholds of the validated genes, read from the per-token fields of the selected unit (any detection when a field is empty)
   coexpr_thresholds_multi <- function(check) {
     unit <- input$coexpr_threshold_unit_multiple %||% "counts"
@@ -4754,9 +4835,9 @@ multiple_datasets_server <- function(input, output, session) {
     }, numeric(1))
     align_gene_values(check, values)
   }
-  
+
   # ---- Observers and computations ----
-  
+
   # Plot rebuilt from the stored results whenever the grouping or visualization selectors change (no new analysis needed)
   coexpression_plot_multiple <- reactive({
     res <- gene_coexpression_data_multiple()
@@ -4765,13 +4846,13 @@ multiple_datasets_server <- function(input, output, session) {
     secondary_split <- if (identical(group_by, "dataset")) input$coexpr_secondary_split_multiple_alt %||% "none" else input$coexpr_secondary_split_multiple %||% "none"
     create_coexpression_plot(res$data, res$genes_analyzed, group_by = group_by, secondary_split = secondary_split, plot_type = input$coexpr_plot_type_multiple %||% "bar")
   })
-  
+
   # Background clusters for the ambient-RNA threshold estimate (same identities as the DE cluster selector)
   observe(run_safely("Interface update", persistent = FALSE, {
     req(multiple_datasets_object())
     updateSelectInput(session, "coexpr_background_clusters_multiple", choices = sort(as.character(unique(Idents(multiple_datasets_object())))))
   }))
-  
+
   observeEvent(input$estimate_coexpr_thresholds_multiple, run_safely("Co-expression background thresholds (multiple datasets)", {
     req(multiple_datasets_object())
     seurat_obj <- multiple_datasets_object()
@@ -4789,13 +4870,13 @@ multiple_datasets_server <- function(input, output, session) {
     }
     coexpr_background_estimate_multiple(list(table = est, clusters = background, unit = unit, n_cells = length(cells)))
   }))
-  
+
   # Update assay choices when object is loaded
   observe(run_safely("Interface update", persistent = FALSE, {
     req(multiple_datasets_object())
     updateSelectInput(session, "coexpr_assay_multiple", choices = names(multiple_datasets_object()@assays), selected = DefaultAssay(multiple_datasets_object()))
   }))
-  
+
   # Populate group-by column and filter groups for co-expression
   observe(run_safely("Interface update", persistent = FALSE, {
     req(multiple_datasets_object())
@@ -4804,7 +4885,7 @@ multiple_datasets_server <- function(input, output, session) {
     updateSelectInput(session, "coexpr_groupby_col_merge", choices = categorical_cols,
                       selected = if ("dataset" %in% categorical_cols) "dataset" else categorical_cols[1])
   }))
-  
+
   observeEvent(input$coexpr_groupby_col_merge, run_safely("coexpr groupby col merge", {
     req(multiple_datasets_object(), nzchar(input$coexpr_groupby_col_merge))
     col <- input$coexpr_groupby_col_merge
@@ -4812,7 +4893,7 @@ multiple_datasets_server <- function(input, output, session) {
     values <- sort(unique(as.character(multiple_datasets_object()@meta.data[[col]])))
     updateSelectInput(session, "coexpr_filter_groups_merge", choices = values, selected = NULL)
   }))
-  
+
   observeEvent(input$analyze_coexpression_multiple, {
     req(multiple_datasets_object())
     tryCatch({
@@ -4862,7 +4943,7 @@ multiple_datasets_server <- function(input, output, session) {
       message("Co-expression error details: ", conditionMessage(e)[1])
     })
   })
-  
+
   # Populate cluster selector when object is available
   observe({
     req(multiple_datasets_object())
@@ -4871,7 +4952,7 @@ multiple_datasets_server <- function(input, output, session) {
       updateSelectInput(session, "coexpr_de_cluster_multiple", choices = clusters)
     }, error = function(e) NULL)
   })
-  
+
   observeEvent(input$run_coexpr_de_multiple, {
     req(multiple_datasets_object())
     tryCatch({
@@ -4911,9 +4992,9 @@ multiple_datasets_server <- function(input, output, session) {
       message("coexpr_de error: ", conditionMessage(e)[1])
     })
   })
-  
+
   # ---- UI and text outputs ----
-  
+
   # Per-gene threshold fields: one numericInput per token, in the order typed (field i <-> token i); typed values survive re-renders
   # never reused as a log-normalized value; typed values survive re-renders
   output$coexpr_thresholds_ui_multiple <- renderUI({
@@ -4929,7 +5010,7 @@ multiple_datasets_server <- function(input, output, session) {
       }
     }))
   })
-  
+
   output$coexpr_background_info_multiple <- renderUI({
     r <- coexpr_background_estimate_multiple()
     if (is.null(r)) return(NULL)
@@ -4939,7 +5020,7 @@ multiple_datasets_server <- function(input, output, session) {
              tags$p(sprintf("Background: %s (%d cells)", paste(r$clusters, collapse = ", "), r$n_cells), style = "margin: 0 0 2px 0; font-weight: bold;"),
              lapply(lines, function(l) tags$p(l, style = "margin: 0;")))
   })
-  
+
   output$coexpr_de_info_multiple <- renderUI({
     r <- coexpr_de_results_multiple()
     if (is.null(r)) return(NULL)
@@ -4977,28 +5058,28 @@ multiple_datasets_server <- function(input, output, session) {
       )
     )
   })
-  
+
   # ---- Plots ----
-  
+
   output$gene_coexpression_plot_multiple <- renderPlot({
     req(coexpression_plot_multiple())
     coexpression_plot_multiple()
   }, height = 700)
-  
+
   # ---- Tables ----
-  
+
   # Render results using modular functions
   output$gene_coexpression_table_multiple <- renderDT({
     req(gene_coexpression_data_multiple())
     render_coexpression_table(gene_coexpression_data_multiple(), "gene_coexpression_table_multiple")
   })
-  
+
   # Render summary statistics using modular approach
   output$coexpression_summary_stats_multiple <- renderTable({
     req(gene_coexpression_data_multiple())
     create_coexpression_summary_stats(gene_coexpression_data_multiple()$data, gene_coexpression_data_multiple()$genes_analyzed)
   }, striped = TRUE, hover = TRUE, spacing = 'l')
-  
+
   output$coexpr_de_table_multiple <- renderDT({
     req(coexpr_de_results_multiple())
     m <- coexpr_de_results_multiple()$markers
@@ -5023,9 +5104,9 @@ multiple_datasets_server <- function(input, output, session) {
       DT::formatStyle("avg_log2FC", backgroundColor = DT::styleInterval(0, c("#c0392b22", "#1a572622"))) |>
       DT::formatSignif(c("p_val_adj", "p_val"), digits = 3)
   })
-  
+
   # ---- Downloads ----
-  
+
   # Download handlers using modular functions
   output$download_coexpression_table_multiple <- createDownloadHandler(
     reactive_data = reactive({ data <- gene_coexpression_data_multiple()$data; data$Coexpression_Visual <- NULL; return(data) }),
@@ -5033,7 +5114,7 @@ multiple_datasets_server <- function(input, output, session) {
     data_name = "coexpression_analysis",
     download_type = "csv"
   )
-  
+
   output$download_coexpression_plot_multiple <- createDownloadHandler(
     reactive_data = coexpression_plot_multiple,
     object_name_reactive = reactive({ getObjectNameForDownload(multiple_datasets_object(), default_name = "MultipleDatasets") }),
@@ -5041,7 +5122,7 @@ multiple_datasets_server <- function(input, output, session) {
     download_type = "plot",
     plot_params = list(file_type = "pdf", width = 12, height = 8, dpi = 300)
   )
-  
+
   output$download_coexpr_de_multiple <- downloadHandler(
     filename = function() paste0("CoexprDE_",
                                  paste(input$coexpr_de_cluster_multiple, collapse = "-"),
@@ -5051,16 +5132,16 @@ multiple_datasets_server <- function(input, output, session) {
       write.csv(coexpr_de_results_multiple()$markers, file, row.names = FALSE)
     }
   )
-  
+
   #####################Exclusive Biomarkers Discovery - Multiple Datasets###############################
-  
+
   # ---- Reactive state ----
-  
+
   # Initialize reactive variable for exclusive markers
   exclusive_markers_merge <- reactiveVal()
-  
+
   # ---- Observers and computations ----
-  
+
   # Populate group-by column selector: any categorical metadata column
   observe(run_safely("Interface update", persistent = FALSE, {
     req(multiple_datasets_object())
@@ -5069,7 +5150,7 @@ multiple_datasets_server <- function(input, output, session) {
     updateSelectInput(session, "exclusive_groupby_col_merge", choices = categorical_cols,
                       selected = if ("dataset" %in% categorical_cols) "dataset" else categorical_cols[1])
   }))
-  
+
   # Populate Target group(s) and Compare Against group(s) when group-by column changes
   observeEvent(input$exclusive_groupby_col_merge, run_safely("exclusive groupby col merge", {
     req(multiple_datasets_object(), nzchar(input$exclusive_groupby_col_merge))
@@ -5080,7 +5161,7 @@ multiple_datasets_server <- function(input, output, session) {
     updateSelectInput(session, "exclusive_target_groups_merge", choices = values, selected = NULL)
     updateSelectInput(session, "exclusive_compare_groups_merge", choices = values, selected = NULL)
   }))
-  
+
   # Keep Compare Against choices distinct from Target selection
   observeEvent(input$exclusive_target_groups_merge, run_safely("exclusive target groups merge", {
     req(multiple_datasets_object(), nzchar(input$exclusive_groupby_col_merge))
@@ -5091,14 +5172,14 @@ multiple_datasets_server <- function(input, output, session) {
     updateSelectInput(session, "exclusive_compare_groups_merge",
                       choices = setdiff(values, input$exclusive_target_groups_merge))
   }))
-  
+
   # Populate cluster selector from current active cluster column
   observe(run_safely("Interface update", persistent = FALSE, {
     req(multiple_datasets_object())
     updateSelectInput(session, "exclusive_target_cluster_merge",
                       choices = active_clusters_merge())
   }))
-  
+
   # Find exclusive biomarkers when button is clicked
   observeEvent(input$find_exclusive_markers_merge, {
     # Missing settings are reported instead of stopping silently (req() gave no feedback after the click)
@@ -5238,7 +5319,7 @@ multiple_datasets_server <- function(input, output, session) {
     })
   })
   # ---- Tables ----
-  
+
   # Display results table — all numeric columns (incl. p-values) get range sliders
   output$table_exclusive_markers_merge <- renderDataTable({
     req(exclusive_markers_merge())
@@ -5255,9 +5336,9 @@ multiple_datasets_server <- function(input, output, session) {
       formatStyle('Log2FC', background = styleColorBar(log2_range, '#ADD8E6'), backgroundSize = '80% 90%',
                   backgroundRepeat = 'no-repeat', backgroundPosition = 'center')
   })
-  
+
   # ---- Downloads ----
-  
+
   # Download handler for exclusive markers
   output$download_exclusive_markers_merge <- createDownloadHandler(
     reactive_data = reactive({
@@ -5281,21 +5362,21 @@ multiple_datasets_server <- function(input, output, session) {
     }),
     download_type = "csv"
   )
-  
+
   ############################## Pathway enrichment ##############################
-  
+
   # ---- Reactive state ----
-  
+
   # ORA / GSEA on a new comparison (FindMarkers, logfc.threshold = 0) or ORA on a stored DE table; helpers in enrichment_functions.R
   enrichment_results_merge <- reactiveVal(NULL)
-  
+
   enrichment_gmt_merge <- reactiveVal(NULL)
-  
+
   # ---- Observers and computations ----
-  
+
   # A new object invalidates the results computed on the previous one
   observeEvent(multiple_datasets_object(), run_safely("Enrichment reset", persistent = FALSE, { enrichment_results_merge(NULL) }), ignoreInit = TRUE)
-  
+
   # Grouping columns: metadata columns with 2 to 200 values
   observe(run_safely("Enrichment interface update", persistent = FALSE, {
     obj <- multiple_datasets_object(); req(obj)
@@ -5304,7 +5385,7 @@ multiple_datasets_server <- function(input, output, session) {
     default <- if ("seurat_clusters" %in% cols) "seurat_clusters" else cols[1]
     updateSelectInput(session, "enrichment_group_col_merge", choices = cols, selected = if (!is.null(current) && current %in% cols) current else default)
   }))
-  
+
   # Group and restriction values follow the grouping column
   observeEvent(list(multiple_datasets_object(), input$enrichment_group_col_merge), run_safely("Enrichment interface update", persistent = FALSE, {
     obj <- multiple_datasets_object(); req(obj, input$enrichment_group_col_merge, input$enrichment_group_col_merge %in% colnames(obj@meta.data))
@@ -5314,12 +5395,12 @@ multiple_datasets_server <- function(input, output, session) {
     # Restriction to clusters of the active identities (annotated names when the clusters were renamed)
     updateSelectizeInput(session, "enrichment_restrict_merge", choices = levels(droplevels(as.factor(Idents(obj)))), selected = character(0))
   }))
-  
+
   # Stored DE tables (same storage as the Venn diagrams)
   observe(run_safely("Enrichment interface update", persistent = FALSE, {
     updateSelectInput(session, "enrichment_stored_table_merge", choices = stored_table_choices(gene_table_storage()))
   }))
-  
+
   # GMT file read on upload and matched to the dataset genes; the md5 checksum identifies the file version in the parameters
   observeEvent(input$enrichment_gmt_file_merge, run_safely("Gene set file", {
     obj <- multiple_datasets_object(); req(obj)
@@ -5327,7 +5408,7 @@ multiple_datasets_server <- function(input, output, session) {
     if (sets$n_sets == 0) stop("No gene of the file matches the dataset genes")
     enrichment_gmt_merge(c(sets, list(file = input$enrichment_gmt_file_merge$name, md5 = unname(tools::md5sum(input$enrichment_gmt_file_merge$datapath)))))
   }))
-  
+
   # Sample column of the pseudobulk option: categorical metadata columns, 'dataset' by default
   observe(run_safely("Enrichment interface update", persistent = FALSE, {
     obj <- multiple_datasets_object(); req(obj)
@@ -5336,7 +5417,7 @@ multiple_datasets_server <- function(input, output, session) {
     default <- if ("dataset" %in% cols) "dataset" else if ("orig.ident" %in% cols) "orig.ident" else cols[1]
     updateSelectInput(session, "enrichment_sample_col_merge", choices = cols, selected = if (!is.null(current) && current %in% cols) current else default)
   }))
-  
+
   observeEvent(input$enrichment_run_merge, run_safely("Pathway enrichment", {
     obj <- multiple_datasets_object()
     if (is.null(obj)) stop("Load a dataset first")
@@ -5357,62 +5438,62 @@ multiple_datasets_server <- function(input, output, session) {
     if (res$gsea_skipped) showNotification("GSEA needs all tested genes ranked: it runs only on a new comparison. ORA only for stored tables.", type = "warning", duration = 8)
     showNotification(paste0(enrichment_done_message(res, input$enrichment_show_max_p_adj_merge %||% 0.05), ". Results stored (Save & Session)."), type = "message", duration = 8)
   }))
-  
+
   enrichment_ora_plot_obj_merge <- reactive({
     r <- enrichment_results_merge(); shiny::validate(shiny::need(!is.null(r$ora), "Run ORA to see results"))
     enrichment_plot_or_message(r$ora$table, "ORA", input$enrichment_show_max_p_adj_merge %||% 0.05, input$enrichment_ora_n_terms_merge %||% 15, paste("ORA —", r$label), r$gene_set_label)
   })
-  
+
   enrichment_gsea_plot_obj_merge <- reactive({
     r <- enrichment_results_merge(); shiny::validate(shiny::need(!is.null(r$gsea), "Run GSEA (new comparison) to see results"))
     enrichment_plot_or_message(r$gsea$table, "GSEA", input$enrichment_show_max_p_adj_merge %||% 0.05, input$enrichment_gsea_n_terms_merge %||% 15, paste("GSEA —", r$label), r$gene_set_label)
   })
-  
+
   # ---- UI and text outputs ----
-  
+
   output$enrichment_gmt_info_merge <- renderText({
     s <- enrichment_gmt_merge(); req(s)
     sprintf("%s: %d sets, %.0f%% of set genes found in the dataset", s$file, s$n_sets, 100 * s$fraction_matched)
   })
-  
+
   output$enrichment_summary_merge <- renderText({ r <- enrichment_results_merge(); req(r); enrichment_summary_text(r) })
-  
+
   # ---- Plots ----
   output$enrichment_ora_plot_merge <- renderPlot({ enrichment_ora_plot_obj_merge() }, res = 96)
   output$enrichment_gsea_plot_merge <- renderPlot({ enrichment_gsea_plot_obj_merge() }, res = 96)
-  
+
   # ---- Tables ----
   output$enrichment_ora_table_merge <- DT::renderDT({ r <- enrichment_results_merge(); req(r$ora, nrow(r$ora$table) > 0); enrichment_datatable(r$ora$table, "ORA", input$enrichment_show_max_p_adj_merge %||% 0.05, isTRUE(input$enrichment_show_all_merge)) })
   output$enrichment_gsea_table_merge <- DT::renderDT({ r <- enrichment_results_merge(); req(r$gsea, nrow(r$gsea$table) > 0); enrichment_datatable(r$gsea$table, "GSEA", input$enrichment_show_max_p_adj_merge %||% 0.05, isTRUE(input$enrichment_show_all_merge)) })
   output$enrichment_params_table_merge <- renderTable({ r <- enrichment_results_merge(); req(r); r$params })
-  
+
   # ---- Downloads ----
-  
+
   output$download_enrichment_ora_plot_merge <- downloadHandler(filename = function() paste0(enrichment_file_stub(enrichment_results_merge()$label), "_ORA.png"),
                                                                content = function(file) ggplot2::ggsave(file, enrichment_ora_plot_obj_merge(), width = 10, height = 7, dpi = 300, bg = "white"))
-  
+
   output$download_enrichment_gsea_plot_merge <- downloadHandler(filename = function() paste0(enrichment_file_stub(enrichment_results_merge()$label), "_GSEA.png"),
                                                                 content = function(file) ggplot2::ggsave(file, enrichment_gsea_plot_obj_merge(), width = 10, height = 7, dpi = 300, bg = "white"))
-  
+
   # Result tables as Excel files: all tested terms sorted by signed significance, shaded red (up) / blue (down), parameters in a second sheet
   output$download_enrichment_ora_table_merge <- downloadHandler(filename = function() paste0(enrichment_file_stub(enrichment_results_merge()$label), "_ORA.xlsx"),
                                                                 content = function(file) { r <- enrichment_results_merge(); req(r$ora); write_enrichment_xlsx(r, "ORA", file, input$enrichment_show_max_p_adj_merge %||% 0.05) })
-  
+
   output$download_enrichment_gsea_table_merge <- downloadHandler(filename = function() paste0(enrichment_file_stub(enrichment_results_merge()$label), "_GSEA.xlsx"),
                                                                  content = function(file) { r <- enrichment_results_merge(); req(r$gsea); write_enrichment_xlsx(r, "GSEA", file, input$enrichment_show_max_p_adj_merge %||% 0.05) })
-  
+
   output$download_enrichment_params_merge <- downloadHandler(filename = function() paste0(enrichment_file_stub(enrichment_results_merge()$label), "_parameters.csv"),
                                                              content = function(file) { r <- enrichment_results_merge(); req(r); utils::write.csv(r$params, file, row.names = FALSE) })
-  
+
   #####################Exclusive Biomarkers Visualization - Multiple Datasets###############################
-  
+
   # ---- Reactive state ----
-  
+
   # Reactive value to store the plot
   exclusive_plot_merge <- reactiveVal()
-  
+
   # ---- Observers and computations ----
-  
+
   observeEvent(input$generate_exclusive_plot_merge, {
     req(multiple_datasets_object())
     tryCatch({
@@ -5471,9 +5552,9 @@ multiple_datasets_server <- function(input, output, session) {
       message("Exclusive biomarker plot error: ", e$message)
     })
   })
-  
+
   # ---- UI and text outputs ----
-  
+
   # Dynamic UI to filter values of the split column
   output$exclusive_split_values_filter_ui <- renderUI({
     req(multiple_datasets_object(), input$exclusive_split_by_column_merge)
@@ -5510,17 +5591,17 @@ multiple_datasets_server <- function(input, output, session) {
                      placeholder = 'Select values (empty = show all)'
                    ))
   })
-  
+
   # ---- Plots ----
-  
+
   # Render the plot
   output$plot_exclusive_markers_merge <- renderPlot({
     req(exclusive_plot_merge())
     print(exclusive_plot_merge())
   }, height = 600)
-  
+
   # ---- Downloads ----
-  
+
   # Download handler for the plot
   output$download_exclusive_plot_merge <- downloadHandler(
     filename = function() {
@@ -5588,22 +5669,22 @@ multiple_datasets_server <- function(input, output, session) {
       })
     }
   )
-  
+
   ############################# Venn Diagram Comparison #############################
-  
+
   # ---- Reactive state ----
-  
+
   # Initialize reactive storage for Venn diagrams
   venn_plot_rendered <- reactiveVal(NULL)
-  
+
   # ---- Observers and computations ----
-  
+
   # Update select inputs with available gene tables
   observe(run_safely("Interface update", persistent = FALSE, {
     updateVennSelectInputs(session, gene_table_storage(), 
                            c("venn_table_1", "venn_table_2", "venn_table_3"))
   }))
-  
+
   # Enable/disable generate button based on available tables
   observe(run_safely("Interface update", persistent = FALSE, {
     tables <- gene_table_storage()
@@ -5613,7 +5694,7 @@ multiple_datasets_server <- function(input, output, session) {
       shinyjs::enable("generate_venn_btn")
     }
   }))
-  
+
   # Generate Venn diagram using modular functions
   observeEvent(input$generate_venn_btn, run_safely("generate venn btn", {
     showModal(modalDialog(title = "Generating Venn Diagram", "Processing...", 
@@ -5647,17 +5728,17 @@ multiple_datasets_server <- function(input, output, session) {
       showNotification(result$message, type = "error")
     }
   }))
-  
+
   # ---- Plots ----
-  
+
   # Render Venn diagram
   output$venn_plot <- renderPlot({
     req(venn_plot_rendered())
     grid.draw(venn_plot_rendered())
   })
-  
+
   # ---- Tables ----
-  
+
   # Display gene table for selected overlap
   output$venn_gene_table <- renderDT({
     req(current_gene_lists(), input$selected_gene_set)
@@ -5674,9 +5755,9 @@ multiple_datasets_server <- function(input, output, session) {
                              buttons = c('copy', 'csv', 'excel')), 
               rownames = FALSE)
   })
-  
+
   # ---- Downloads ----
-  
+
   # Download handlers using modular functions
   output$download_venn_diagram <- createDownloadHandler(
     reactive_data = venn_plot_rendered,
@@ -5692,7 +5773,7 @@ multiple_datasets_server <- function(input, output, session) {
       dpi = reactive({ input$venn_diagram_dpi })
     )
   )
-  
+
   output$download_venn_gene_lists <- createDownloadHandler(
     reactive_data = reactive({
       gene_lists <- current_gene_lists()
@@ -5716,31 +5797,31 @@ multiple_datasets_server <- function(input, output, session) {
     data_name = "gene_lists",
     download_type = "csv"
   )
-  
+
   ############################# Helper Functions for DE Table Storage #############################
-  
+
   # Function to store DE tables using modular approach (storeDETable puts the gene names in the row names and notifies)
   store_de_table <- function(table_data, table_name, description, type, parameters) {
     result <- storeDETable(gene_table_storage(), table_data, table_name, description, type, parameters)
     if (isTRUE(result$success)) gene_table_storage(result$storage)
     invisible(result)
   }
-  
+
   ############################# Pie Chart for Cluster Composition #############################
-  
+
   # ---- Reactive state ----
   cluster_composition_data_merge <- reactiveVal(NULL)
   cluster_pie_plot_merge <- reactiveVal(NULL)
-  
+
   # ---- Observers and computations ----
-  
+
   # Update cluster choices
   observe(run_safely("Interface update", persistent = FALSE, {
     req(multiple_datasets_object())
     clusters <- levels(Idents(multiple_datasets_object()))
     updateSelectInput(session, "cluster_pie_select_merge", choices = clusters)
   }))
-  
+
   # Generate pie chart data when selections change
   observeEvent(c(multiple_datasets_object(), input$cluster_pie_select_merge, 
                  input$metadata_column_pie, input$normalize_by_dataset_size_merge), {
@@ -5804,9 +5885,9 @@ multiple_datasets_server <- function(input, output, session) {
                      cluster_composition_data_merge(NULL)
                    })
                  })
-  
+
   # ---- Plots ----
-  
+
   # Render pie chart
   output$cluster_composition_pie_merge <- renderPlot({
     req(cluster_composition_data_merge(), input$metadata_column_pie)
@@ -5866,9 +5947,9 @@ multiple_datasets_server <- function(input, output, session) {
     cluster_pie_plot_merge(pie_plot)
     pie_plot
   })
-  
+
   # ---- Downloads ----
-  
+
   # Download handler for pie chart
   output$download_pie_chart_merge <- createDownloadHandler(
     reactive_data = cluster_pie_plot_merge,
@@ -5887,16 +5968,16 @@ multiple_datasets_server <- function(input, output, session) {
       dpi = 300
     )
   )
-  
+
   ########################## Volcano Plot - Multiple Datasets ##########################
-  
+
   # ---- Reactive state ----
-  
+
   # Reactive value for storing volcano plot
   volcano_plot_merge <- reactiveVal(NULL)
-  
+
   # ---- Observers and computations ----
-  
+
   # Update volcano plot source selector when DEG results are available (enrichment results left out)
   observe(run_safely("Interface update", persistent = FALSE, {
     tables <- de_tables_only(gene_table_storage())
@@ -5907,7 +5988,7 @@ multiple_datasets_server <- function(input, output, session) {
       updateSelectInput(session, "volcano_deg_source_merge", choices = c("None" = ""))
     }
   }))
-  
+
   # Generate volcano plot
   observeEvent(input$generate_volcano_btn_merge, {
     req(input$volcano_deg_source_merge, input$volcano_deg_source_merge != "")
@@ -5956,17 +6037,17 @@ multiple_datasets_server <- function(input, output, session) {
       message("DEBUG volcano error: ", e$message)
     })
   })
-  
+
   # ---- Plots ----
-  
+
   # Render volcano plot
   output$volcano_plot_merge <- renderPlot({
     req(volcano_plot_merge())
     volcano_plot_merge()
   })
-  
+
   # ---- Downloads ----
-  
+
   # Download volcano plot
   output$download_volcano_plot_merge <- createDownloadHandler(
     reactive_data = volcano_plot_merge,
@@ -5983,17 +6064,17 @@ multiple_datasets_server <- function(input, output, session) {
       dpi = reactive({ input$volcano_plot_dpi_merge })
     )
   )
-  
+
   ############################## Subseting seurat object ##############################
-  
+
   # ---- Reactive state ----
-  
+
   # Variable réactive pour cet onglet
   subset_seurat_merge <- reactiveVal(NULL)
-  
+
   # ---- Observers and computations ----
   shinyjs::disable("download_subset_merge")
-  
+
   # Mise à jour des choix d'identité de cellules pour le sous-ensemble
   observe(run_safely("Interface update", persistent = FALSE, {
     req(multiple_datasets_object())
@@ -6014,14 +6095,14 @@ multiple_datasets_server <- function(input, output, session) {
       message(paste("Error updating subset choices:", e$message))
     })
   }))
-  
+
   # Réinitialisation de l'objet subset_seurat_merge lors du changement de multiple_datasets_object
   observe(run_safely("Interface update", persistent = FALSE, {
     if (!is.null(multiple_datasets_object())) {
       subset_seurat_merge(multiple_datasets_object())
     }
   }))
-  
+
   # Mise à jour de la sélection de sous-ensemble
   observeEvent(input$apply_subset_merge, {
     tryCatch({
@@ -6048,7 +6129,7 @@ multiple_datasets_server <- function(input, output, session) {
       showNotification(paste0("Error updating subset selection: ", e$message), type = "error")
     })
   })
-  
+
   observeEvent(input$apply_gene_subset_merge, {
     tryCatch({
       req(multiple_datasets_object())
@@ -6092,7 +6173,7 @@ multiple_datasets_server <- function(input, output, session) {
       showNotification(paste0("Error during gene-based subset: ", e$message), type = "error")
     })
   })
-  
+
   # Mise à jour des choix de colonnes de métadonnées avec exclusions
   observe(run_safely("Interface update", persistent = FALSE, {
     req(multiple_datasets_object())
@@ -6114,7 +6195,7 @@ multiple_datasets_server <- function(input, output, session) {
     # Mettre à jour le sélecteur
     updateSelectInput(session, "metadata_column_subset", choices = available_columns)
   }))
-  
+
   # Gestion du bouton de subset par métadonnées
   observeEvent(input$apply_metadata_subset, {
     tryCatch({
@@ -6161,9 +6242,9 @@ multiple_datasets_server <- function(input, output, session) {
       showNotification(paste0("Error during metadata-based subset: ", e$message), type = "error")
     })
   })
-  
+
   # ---- UI and text outputs ----
-  
+
   # Interface dynamique pour les valeurs de métadonnées
   output$metadata_values_ui <- renderUI({
     req(multiple_datasets_object(), input$metadata_column_subset)
@@ -6191,9 +6272,9 @@ multiple_datasets_server <- function(input, output, session) {
                   selected = sort(as.character(col_values))[1])
     }
   })
-  
+
   # ---- Plots ----
-  
+
   # Affichage de l'UMAP global
   output$global_umap_merge <- renderPlot({
     req(multiple_datasets_object())
@@ -6208,7 +6289,7 @@ multiple_datasets_server <- function(input, output, session) {
       NoLegend() +
       ggtitle(NULL)
   })
-  
+
   # Affichage de l'UMAP du sous-ensemble
   output$subset_umap_merge <- renderPlot({
     req(subset_seurat_merge())
@@ -6223,9 +6304,9 @@ multiple_datasets_server <- function(input, output, session) {
       NoLegend() +
       ggtitle(NULL)
   })
-  
+
   # ---- Downloads ----
-  
+
   # Téléchargement de l'objet Seurat sous-ensemble
   output$download_subset_merge <- createDownloadHandler(
     reactive_data = subset_seurat_merge,
@@ -6236,7 +6317,7 @@ multiple_datasets_server <- function(input, output, session) {
     download_type = "seurat",
     show_modal = TRUE
   )
-  
+
   # Download analysis parameters as CSV
   output$download_params_multi <- downloadHandler(
     filename = function() {
@@ -6261,7 +6342,7 @@ multiple_datasets_server <- function(input, output, session) {
       write.csv(params_df, file, row.names = FALSE)
     }
   )
-  
+
   output$download_report_multi <- downloadHandler(
     filename = function() {
       paste0("multi_dataset_report_", format(Sys.Date(), "%Y%m%d"), ".pdf")
@@ -6291,28 +6372,28 @@ multiple_datasets_server <- function(input, output, session) {
       }
     }
   )
-  
+
   ############################## Session: save, contents and stored tables ##############################
-  
+
   # ---- Reactive state ----
-  
+
   # IDs captured when the confirmation opens, so a selection change in between cannot delete other tables
   pending_table_deletion_merge <- reactiveVal(character(0))
-  
+
   # ---- Observers and computations ----
-  
+
   # Seurat object + session state, written by the "Save analysis" button of the Save & Session tab
   session_object_merge <- reactive({
     req(multiple_datasets_object())
     pack_session_state(multiple_datasets_object(), gene_tables = gene_table_storage(),
                        qc_stats = qc_stats_multi(), module = "multiple")
   })
-  
+
   # Stored result tables, listed by their human-readable description
   session_tables_view_merge <- reactive({
     summarize_gene_tables(gene_table_storage())
   })
-  
+
   observeEvent(input$delete_session_tables_merge, run_safely("delete session tables merge", {
     selected <- input$session_tables_merge_rows_selected
     if (length(selected) == 0) {
@@ -6331,7 +6412,7 @@ multiple_datasets_server <- function(input, output, session) {
       )
     ))
   }))
-  
+
   observeEvent(input$confirm_delete_session_tables_merge, run_safely("confirm delete session tables merge", {
     ids <- pending_table_deletion_merge()
     tables <- gene_table_storage()
@@ -6341,23 +6422,23 @@ multiple_datasets_server <- function(input, output, session) {
     removeModal()
     showNotification(sprintf("%d table(s) deleted", length(ids)), type = "message")
   }))  
-  
+
   # ---- UI and text outputs ----
-  
+
   output$session_size_info_merge <- renderText({
     tables <- gene_table_storage()
     sprintf("%d stored table(s), %s in total. Plots are never stored.",
             length(tables), format(object.size(tables), units = "auto"))
   })
-  
+
   # ---- Tables ----
-  
+
   # What the object contains
   output$session_object_summary_merge <- renderTable({
     req(multiple_datasets_object())
     summarize_seurat_object(multiple_datasets_object())
   }, striped = TRUE, bordered = TRUE, spacing = "s")
-  
+
   output$session_tables_merge <- DT::renderDT({
     DT::datatable(
       session_tables_view_merge(),
@@ -6368,9 +6449,9 @@ multiple_datasets_server <- function(input, output, session) {
                        columnDefs = list(list(visible = FALSE, targets = 0)))
     )
   })
-  
+
   # ---- Downloads ----
-  
+
   output$download_session_merge <- createDownloadHandler(
     reactive_data = session_object_merge,
     object_name_reactive = reactive({

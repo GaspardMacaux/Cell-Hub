@@ -3,7 +3,14 @@
 ._*
 .AppleDouble
 .LSOverride
-cellhub_demo_data/
 *.rds
-.Rhistory
+*.RData
 .RData
+.Rhistory
+cellhub_demo_data/
+cellhub_test_*/
+Code/databases/*/
+Code/code.zip
+Code/databases/*.csv
+tests/patch_release_*.R
+software_versions.md
