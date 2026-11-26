@@ -1,0 +1,18 @@
+{
+  "title": "Cell-Hub: a graphical interface for end-to-end single-cell RNA sequencing analysis",
+  "upload_type": "software",
+  "description": "Cell-Hub, an open-source R/Shiny application for single-cell and single-nucleus RNA sequencing analysis (Seurat v5, CellChat 2, Monocle 3, Visium and Visium HD), distributed as the Docker image gaspardmacaux/cell-hub. The image digest of each version is given in the release notes and the README.",
+  "creators": [
+    {"name": "Macaux, Gaspard"},
+    {"name": "Di Gallo, Maxime"},
+    {"name": "Taglietti, Valentina"},
+    {"name": "Amthor, Helge"},
+    {"name": "Maire, Pascal"}
+  ],
+  "license": "GPL-3.0-or-later",
+  "keywords": ["single-cell RNA-seq", "single-nucleus RNA-seq", "Shiny", "Seurat", "CellChat", "Monocle 3", "spatial transcriptomics", "Docker"],
+  "related_identifiers": [
+    {"identifier": "10.5281/zenodo.24283592", "relation": "requires", "resource_type": "dataset"},
+    {"identifier": "10.5281/zenodo.24198709", "relation": "isSupplementedBy", "resource_type": "dataset"}
+  ]
+}
